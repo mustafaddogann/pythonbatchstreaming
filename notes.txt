@@ -1,0 +1,504 @@
+PS C:\Users\mdogan\repos\pythonbatchstreaming> py -3.10 .\check_environment.py
+=== Environment Diagnostic Script ===
+Python version: 3.10.11 (tags/v3.10.11:7d4cc5a, Apr  5 2023, 00:38:17) [MSC v.1929 64 bit (AMD64)]
+Python executable: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\python.exe
+Current directory: C:\Users\mdogan\repos\pythonbatchstreaming
+Script location: C:\Users\mdogan\repos\pythonbatchstreaming\check_environment.py
+Running as admin: 0
+
+=== Checking for Visual C++ Runtime ===
+msvcp140.dll: FOUND at C:\Windows\System32\msvcp140.dll
+vcruntime140.dll: FOUND at C:\Windows\System32\vcruntime140.dll
+vcruntime140_1.dll: FOUND at C:\Windows\System32\vcruntime140_1.dll
+
+=== Checking Registry for VC++ Installation ===
+VC++ Runtime found in registry: v14.44.35208.00
+VC++ Runtime found in registry: v14.44.35208.00
+
+=== Checking packages directory ===
+Packages directory: C:\Users\mdogan\repos\pythonbatchstreaming\packages
+Exists: True
+
+ijson directory contents:
+ijson/
+  benchmark.py
+  common.py
+  compat.py
+  dump.py
+  utils.py
+  utils35.py
+  version.py
+  __init__.py
+  backends/
+    python.py
+    yajl.py
+    yajl2.py
+    yajl2_c.py
+    yajl2_cffi.py
+    _yajl2.cp310-win_amd64.pyd
+    _yajl2_ctypes_common.py
+    __init__.py
+    __pycache__/
+      python.cpython-310.pyc
+      yajl.cpython-310.pyc
+      yajl2.cpython-310.pyc
+      yajl2_c.cpython-310.pyc
+      yajl2_cffi.cpython-310.pyc
+      _yajl2_ctypes_common.cpython-310.pyc
+      __init__.cpython-310.pyc
+  __pycache__/
+    benchmark.cpython-310.pyc
+    common.cpython-310.pyc
+    compat.cpython-310.pyc
+    dump.cpython-310.pyc
+    utils.cpython-310.pyc
+    utils35.cpython-310.pyc
+    version.cpython-310.pyc
+    __init__.cpython-310.pyc
+
+=== Testing ijson C backend import ===
+SUCCESS: yajl2_c imported successfully!
+Module location: C:\Users\mdogan\repos\pythonbatchstreaming\packages\ijson\backends\yajl2_c.py
+
+=== End of diagnostic ===
+
+=== Checking for Azure packages ===
+azure: FOUND at None
+azure.storage: FOUND at None
+azure.storage.blob: FOUND at None
+
+=== All packages in packages directory ===
+  __pycache__/ (directory)
+  _cffi_backend.cp310-win_amd64.pyd (file)
+  _distutils_hack/ (directory)
+  azure/ (directory)
+  azure_core-1.34.0.dist-info/ (directory)
+  azure_storage_blob-12.25.1.dist-info/ (directory)
+  bin/ (directory)
+  certifi/ (directory)
+  certifi-2025.4.26.dist-info/ (directory)
+  cffi/ (directory)
+  cffi-1.17.1.dist-info/ (directory)
+  charset_normalizer/ (directory)
+  charset_normalizer-3.4.2.dist-info/ (directory)
+  cryptography/ (directory)
+  cryptography-3.3.2.dist-info/ (directory)
+  cryptography-45.0.3.dist-info/ (directory)
+  cryptography-45.0.4.dist-info/ (directory)
+  distutils-precedence.pth (file)
+  idna/ (directory)
+  idna-3.10.dist-info/ (directory)
+  ijson/ (directory)
+  ijson-3.4.0.dist-info/ (directory)
+  isodate/ (directory)
+  isodate-0.7.2.dist-info/ (directory)
+  msvcp140.dll (file)
+  pkg_resources/ (directory)
+  pycparser/ (directory)
+  pycparser-2.22.dist-info/ (directory)
+  requests/ (directory)
+  requests-2.32.3.dist-info/ (directory)                                                                                                                                                                                              requests-2.32.4.dist-info/ (directory)                                                                                                                                                                                              setuptools/ (directory)                                                                                                                                                                                                             setuptools-80.9.0.dist-info/ (directory)                                                                                                                                                                                            six-1.17.0.dist-info/ (directory)                                                                                                                                                                                                 
+  six.py (file)
+  typing_extensions-4.14.0.dist-info/ (directory)
+  typing_extensions.py (file)
+  urllib3/ (directory)
+  urllib3-2.4.0.dist-info/ (directory)
+  vcruntime140.dll (file)
+  vcruntime140_1.dll (file)
+  winsound.pyd (file)
+
+=== Python sys.path ===
+0: C:\Users\mdogan\repos\pythonbatchstreaming\packages
+1: C:\Users\mdogan\repos\pythonbatchstreaming
+2: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\python310.zip
+3: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\DLLs
+4: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\lib
+5: C:\Users\mdogan\AppData\Local\Programs\Python\Python310
+6: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\lib\site-packages
+
+input command:powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path batch-script.zip -DestinationPath .; .\\python.exe check_environment.py"
+
+.\\python.exe : The term '.\\python.exe' is not recognized as the name of a cmdlet, function, 
+script file, or operable program. Check the spelling of the name, or if a path was included, 
+verify that the path is correct and try again.
+At line:1 char:59
++ ... hive -Path batch-script.zip -DestinationPath .; .\\python.exe batchac ...
++                                                     ~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\\python.exe:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path batch-script.zip -DestinationPath .; Get-ChildItem -Recurse; .\\python.exe check_environment.py"
+
+Warning: C backend for ijson not found. Falling back to slower Python backend.
+Downloading and processing blob: inbound/json/row_i_18_n_2025-05-05.json
+Streaming JSON items from path: i_18_n.item
+Starting upload to inbound/csv\row_i_18_n_2025-05-05_i_18_n.csv...
+Successfully wrote 657 rows and 3 columns to: inbound/csv\row_i_18_n_2025-05-05_i_18_n.csv
+
+
+
+PS C:\Users\mdogan\repos\pythonbatchstreaming> py -3.10 .\prepare_packages.py 
+--- Removing existing packages directory: C:\Users\mdogan\repos\pythonbatchstreaming\packages ---
+--- Creating new packages directory: C:\Users\mdogan\repos\pythonbatchstreaming\packages ---
+--- Installing packages to: C:\Users\mdogan\repos\pythonbatchstreaming\packages ---
+
+Installing azure-storage-blob...
+Collecting azure-storage-blob
+  Using cached azure_storage_blob-12.25.1-py3-none-any.whl (406 kB)
+Collecting azure-core>=1.30.0
+  Using cached azure_core-1.34.0-py3-none-any.whl (207 kB)
+Collecting typing-extensions>=4.6.0
+  Using cached typing_extensions-4.14.0-py3-none-any.whl (43 kB)
+Collecting isodate>=0.6.1
+  Using cached isodate-0.7.2-py3-none-any.whl (22 kB)
+Collecting cryptography>=2.1.4
+  Using cached cryptography-45.0.4-cp37-abi3-win_amd64.whl (3.4 MB)
+Collecting requests>=2.21.0
+  Using cached requests-2.32.4-py3-none-any.whl (64 kB)
+Collecting six>=1.11.0
+  Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Collecting cffi>=1.14
+  Using cached cffi-1.17.1-cp310-cp310-win_amd64.whl (181 kB)
+Collecting pycparser
+  Using cached pycparser-2.22-py3-none-any.whl (117 kB)
+Collecting certifi>=2017.4.17
+  Downloading certifi-2025.6.15-py3-none-any.whl (157 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 157.7/157.7 kB 2.4 MB/s eta 0:00:00
+Collecting urllib3<3,>=1.21.1
+  Using cached urllib3-2.4.0-py3-none-any.whl (128 kB)
+Collecting charset_normalizer<4,>=2
+  Using cached charset_normalizer-3.4.2-cp310-cp310-win_amd64.whl (105 kB)
+Collecting idna<4,>=2.5
+  Using cached idna-3.10-py3-none-any.whl (70 kB)
+Installing collected packages: urllib3, typing-extensions, six, pycparser, isodate, idna, charset_normalizer, certifi, requests, cffi, cryptography, azure-core, azure-storage-blob
+Successfully installed azure-core-1.34.0 azure-storage-blob-12.25.1 certifi-2025.6.15 cffi-1.17.1 charset_normalizer-3.4.2 cryptography-45.0.4 idna-3.10 isodate-0.7.2 pycparser-2.22 requests-2.32.4 six-1.17.0 typing-extensions-4.14.0 urllib3-2.4.0
+
+[notice] A new release of pip is available: 23.0.1 -> 25.1.1
+[notice] To update, run: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\python.exe -m pip install --upgrade pip
+
+Installing ijson...
+Collecting ijson
+  Using cached ijson-3.4.0-cp310-cp310-win_amd64.whl (53 kB)
+Installing collected packages: ijson
+Successfully installed ijson-3.4.0
+
+[notice] A new release of pip is available: 23.0.1 -> 25.1.1
+[notice] To update, run: C:\Users\mdogan\AppData\Local\Programs\Python\Python310\python.exe -m pip install --upgrade pip
+
+=== Installation complete ===
+Packages installed to: C:\Users\mdogan\repos\pythonbatchstreaming\packages
+
+Contents of packages directory:
+  __pycache__/
+  _cffi_backend.cp310-win_amd64.pyd
+  azure/
+  azure_core-1.34.0.dist-info/
+  azure_storage_blob-12.25.1.dist-info/
+  bin/
+  certifi/
+  certifi-2025.6.15.dist-info/
+  cffi/
+  cffi-1.17.1.dist-info/
+  charset_normalizer/
+  charset_normalizer-3.4.2.dist-info/
+  cryptography/
+  cryptography-45.0.4.dist-info/
+  idna/
+  idna-3.10.dist-info/
+  ijson/
+  ijson-3.4.0.dist-info/
+  isodate/
+  isodate-0.7.2.dist-info/
+  pycparser/
+  pycparser-2.22.dist-info/
+  requests/
+  requests-2.32.4.dist-info/
+  six-1.17.0.dist-info/
+  six.py
+  typing_extensions-4.14.0.dist-info/
+  typing_extensions.py
+  urllib3/
+  urllib3-2.4.0.dist-info/
+
+IMPORTANT: Make sure to include the entire 'packages' directory in your zip file.
+The directory structure should be:
+  your_zip.zip/
+    ├── batchactivity_json2csv.py
+    ├── check_environment.py
+    └── packages/
+        ├── azure/
+        ├── azure_core-*.dist-info/
+        ├── azure_storage_blob-*.dist-info/
+        ├── ijson/
+        └── ... (other dependencies)
+
+Traceback (most recent call last):
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\fd544d71-8f06-4c8e-99d3-7e0d2913d251\wd\batchactivity_json2csv.py", line 217, in <module>
+    main()
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\fd544d71-8f06-4c8e-99d3-7e0d2913d251\wd\batchactivity_json2csv.py", line 183, in main
+    first_row = next(expanded_row_iterator)
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\fd544d71-8f06-4c8e-99d3-7e0d2913d251\wd\batchactivity_json2csv.py", line 171, in expanded_generator
+    for obj in json_iterator:
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\fd544d71-8f06-4c8e-99d3-7e0d2913d251\wd\packages\azure\storage\blob\_download.py", line 801, in readinto
+    count = stream.write(cast(bytes, self._current_content[start:start + current_remaining]))
+AttributeError: 'bytearray' object has no attribute 'write'
+
+
+Traceback (most recent call last):
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\7001e7df-7807-4cb6-bdcd-e5ca1d0c0ea3\wd\batchactivity_json2csv.py", line 220, in <module>
+    main()
+  File "D:\batch\tasks\workitems\adfv2-edpcanspool_e4s_v3\job-1\7001e7df-7807-4cb6-bdcd-e5ca1d0c0ea3\wd\batchactivity_json2csv.py", line 160, in main
+    buffered_stream = BufferedReader(download_stream)
+AttributeError: 'StorageStreamDownloader' object has no attribute 'readable'. Did you mean: 'readall'?
+
+
+
+SUCCESS: Using fast C backend (yajl2_c)
+Downloading and processing blob: inbound/json/row_person_2025-05-05.json
+Blob size: 27.32 MB
+Streaming JSON items from path: person_v.item
+Starting upload to inbound/csv\row_person_2025-05-05_person_v.csv...
+Processed 10000 rows in 0.8s (11852 rows/sec)
+Processed 20000 rows in 7.9s (2545 rows/sec)
+Processed 30000 rows in 18.9s (1584 rows/sec)
+Processed 40000 rows in 33.8s (1182 rows/sec)
+Processed 50000 rows in 52.7s (948 rows/sec)
+Processed 60000 rows in 75.5s (795 rows/sec)
+Processed 70000 rows in 102.4s (684 rows/sec)
+Processed 80000 rows in 133.5s (599 rows/sec)
+Processed 90000 rows in 168.5s (534 rows/sec)
+Processed 100000 rows in 208.4s (480 rows/sec)
+Processed 110000 rows in 252.5s (436 rows/sec)
+Processed 120000 rows in 301.2s (398 rows/sec)
+Processed 130000 rows in 354.8s (366 rows/sec)
+Processed 140000 rows in 412.7s (339 rows/sec)
+
+=== Performance Summary ===
+Total rows processed: 145587
+Total columns: 10
+Input size: 27.32 MB
+Total time: 447.6 seconds
+Processing speed: 325 rows/sec
+Data throughput: 0.06 MB/sec
+Output file: inbound/csv\row_person_2025-05-05_person_v.csv
+
+SUCCESS: Using fast C backend (yajl2_c)
+=== Performance Configuration ===
+Read Buffer size: 64 MB
+CSV Batch size: 10,000 rows
+Progress Interval: 50,000 rows
+Upload Block Size: 8 MB
+Max Single Put Size: 64 MB
+
+Downloading and processing blob: inbound/json/row_item_2025-05-05.json
+Blob size: 2464.79 MB
+Streaming JSON items from path: assessment_item_transformed_v.item
+Starting upload to inbound/csv\row_item_2025-05-05_assessment_item_transformed_v.csv...
+Processed 50,000 rows | Last 50k: 20,253 rows/sec | Overall: 20,253 rows/sec
+Processed 100,000 rows | Last 50k: 30,477 rows/sec | Overall: 24,335 rows/sec
+Processed 150,000 rows | Last 50k: 29,906 rows/sec | Overall: 25,946 rows/sec
+Processed 200,000 rows | Last 50k: 29,907 rows/sec | Overall: 26,835 rows/sec
+Processed 250,000 rows | Last 50k: 29,091 rows/sec | Overall: 27,258 rows/sec
+Processed 300,000 rows | Last 50k: 16,162 rows/sec | Overall: 24,459 rows/sec
+Processed 350,000 rows | Last 50k: 29,091 rows/sec | Overall: 25,028 rows/sec
+Processed 400,000 rows | Last 50k: 28,319 rows/sec | Overall: 25,397 rows/sec
+Processed 450,000 rows | Last 50k: 28,319 rows/sec | Overall: 25,692 rows/sec
+Processed 500,000 rows | Last 50k: 28,319 rows/sec | Overall: 25,932 rows/sec
+Processed 550,000 rows | Last 50k: 15,842 rows/sec | Overall: 24,513 rows/sec
+Processed 600,000 rows | Last 50k: 27,826 rows/sec | Overall: 24,759 rows/sec
+Processed 650,000 rows | Last 50k: 27,587 rows/sec | Overall: 24,955 rows/sec
+Processed 700,000 rows | Last 50k: 27,119 rows/sec | Overall: 25,098 rows/sec
+Processed 750,000 rows | Last 50k: 27,119 rows/sec | Overall: 25,224 rows/sec
+Processed 800,000 rows | Last 50k: 15,311 rows/sec | Overall: 24,243 rows/sec
+Processed 850,000 rows | Last 50k: 27,119 rows/sec | Overall: 24,395 rows/sec
+Processed 900,000 rows | Last 50k: 26,017 rows/sec | Overall: 24,480 rows/sec
+Processed 950,000 rows | Last 50k: 26,229 rows/sec | Overall: 24,566 rows/sec
+Processed 1,000,000 rows | Last 50k: 26,017 rows/sec | Overall: 24,635 rows/sec
+Processed 1,050,000 rows | Last 50k: 14,848 rows/sec | Overall: 23,885 rows/sec
+Processed 1,100,000 rows | Last 50k: 25,397 rows/sec | Overall: 23,950 rows/sec
+Processed 1,150,000 rows | Last 50k: 25,397 rows/sec | Overall: 24,009 rows/sec
+Processed 1,200,000 rows | Last 50k: 25,397 rows/sec | Overall: 24,064 rows/sec
+Processed 1,250,000 rows | Last 50k: 25,397 rows/sec | Overall: 24,115 rows/sec
+Processed 1,300,000 rows | Last 50k: 14,612 rows/sec | Overall: 23,526 rows/sec
+Processed 1,350,000 rows | Last 50k: 24,615 rows/sec | Overall: 23,565 rows/sec
+Processed 1,400,000 rows | Last 50k: 24,616 rows/sec | Overall: 23,601 rows/sec
+Processed 1,450,000 rows | Last 50k: 24,061 rows/sec | Overall: 23,616 rows/sec
+Processed 1,500,000 rows | Last 50k: 24,243 rows/sec | Overall: 23,637 rows/sec
+Processed 1,550,000 rows | Last 50k: 23,358 rows/sec | Overall: 23,628 rows/sec
+Processed 1,600,000 rows | Last 50k: 14,159 rows/sec | Overall: 23,144 rows/sec
+Processed 1,650,000 rows | Last 50k: 23,704 rows/sec | Overall: 23,161 rows/sec
+Processed 1,700,000 rows | Last 50k: 23,189 rows/sec | Overall: 23,161 rows/sec
+Processed 1,750,000 rows | Last 50k: 23,022 rows/sec | Overall: 23,157 rows/sec
+Processed 1,800,000 rows | Last 50k: 23,357 rows/sec | Overall: 23,163 rows/sec
+Processed 1,850,000 rows | Last 50k: 13,913 rows/sec | Overall: 22,754 rows/sec
+Processed 1,900,000 rows | Last 50k: 22,857 rows/sec | Overall: 22,757 rows/sec
+Processed 1,950,000 rows | Last 50k: 22,858 rows/sec | Overall: 22,759 rows/sec
+Processed 2,000,000 rows | Last 50k: 22,378 rows/sec | Overall: 22,750 rows/sec
+Processed 2,050,000 rows | Last 50k: 22,069 rows/sec | Overall: 22,733 rows/sec
+Processed 2,100,000 rows | Last 50k: 13,913 rows/sec | Overall: 22,395 rows/sec
+Processed 2,150,000 rows | Last 50k: 21,918 rows/sec | Overall: 22,383 rows/sec
+Processed 2,200,000 rows | Last 50k: 22,069 rows/sec | Overall: 22,376 rows/sec
+Processed 2,250,000 rows | Last 50k: 21,333 rows/sec | Overall: 22,352 rows/sec
+Processed 2,300,000 rows | Last 50k: 21,053 rows/sec | Overall: 22,322 rows/sec
+Processed 2,350,000 rows | Last 50k: 13,445 rows/sec | Overall: 22,013 rows/sec
+Processed 2,400,000 rows | Last 50k: 20,645 rows/sec | Overall: 21,982 rows/sec
+Processed 2,450,000 rows | Last 50k: 20,779 rows/sec | Overall: 21,956 rows/sec
+Processed 2,500,000 rows | Last 50k: 20,916 rows/sec | Overall: 21,935 rows/sec
+Processed 2,550,000 rows | Last 50k: 20,645 rows/sec | Overall: 21,908 rows/sec
+Processed 2,600,000 rows | Last 50k: 12,956 rows/sec | Overall: 21,620 rows/sec
+Processed 2,650,000 rows | Last 50k: 20,513 rows/sec | Overall: 21,598 rows/sec
+Processed 2,700,000 rows | Last 50k: 20,254 rows/sec | Overall: 21,572 rows/sec
+Processed 2,750,000 rows | Last 50k: 20,126 rows/sec | Overall: 21,544 rows/sec
+Processed 2,800,000 rows | Last 50k: 20,001 rows/sec | Overall: 21,514 rows/sec
+Processed 2,850,000 rows | Last 50k: 12,851 rows/sec | Overall: 21,263 rows/sec
+Processed 2,900,000 rows | Last 50k: 20,000 rows/sec | Overall: 21,240 rows/sec
+Processed 2,950,000 rows | Last 50k: 19,394 rows/sec | Overall: 21,205 rows/sec
+Processed 3,000,000 rows | Last 50k: 19,394 rows/sec | Overall: 21,172 rows/sec
+Processed 3,050,000 rows | Last 50k: 19,633 rows/sec | Overall: 21,145 rows/sec
+Processed 3,100,000 rows | Last 50k: 19,048 rows/sec | Overall: 21,108 rows/sec
+Processed 3,150,000 rows | Last 50k: 12,648 rows/sec | Overall: 20,886 rows/sec
+Processed 3,200,000 rows | Last 50k: 18,823 rows/sec | Overall: 20,850 rows/sec
+Processed 3,250,000 rows | Last 50k: 19,048 rows/sec | Overall: 20,820 rows/sec
+Processed 3,300,000 rows | Last 50k: 18,714 rows/sec | Overall: 20,785 rows/sec
+Processed 3,350,000 rows | Last 50k: 18,605 rows/sec | Overall: 20,748 rows/sec
+Processed 3,400,000 rows | Last 50k: 12,355 rows/sec | Overall: 20,543 rows/sec
+Processed 3,450,000 rows | Last 50k: 18,286 rows/sec | Overall: 20,506 rows/sec
+Processed 3,500,000 rows | Last 50k: 18,286 rows/sec | Overall: 20,471 rows/sec
+Processed 3,550,000 rows | Last 50k: 18,286 rows/sec | Overall: 20,436 rows/sec
+Processed 3,600,000 rows | Last 50k: 17,778 rows/sec | Overall: 20,394 rows/sec
+Processed 3,650,000 rows | Last 50k: 11,940 rows/sec | Overall: 20,198 rows/sec
+Processed 3,700,000 rows | Last 50k: 17,778 rows/sec | Overall: 20,161 rows/sec
+Processed 3,750,000 rows | Last 50k: 17,679 rows/sec | Overall: 20,123 rows/sec
+Processed 3,800,000 rows | Last 50k: 17,583 rows/sec | Overall: 20,085 rows/sec
+Processed 3,850,000 rows | Last 50k: 17,778 rows/sec | Overall: 20,051 rows/sec
+Processed 3,900,000 rows | Last 50k: 11,755 rows/sec | Overall: 19,872 rows/sec
+Processed 3,950,000 rows | Last 50k: 17,205 rows/sec | Overall: 19,833 rows/sec
+Processed 4,000,000 rows | Last 50k: 17,112 rows/sec | Overall: 19,793 rows/sec
+Processed 4,050,000 rows | Last 50k: 16,931 rows/sec | Overall: 19,752 rows/sec
+Processed 4,100,000 rows | Last 50k: 17,113 rows/sec | Overall: 19,715 rows/sec
+Processed 4,150,000 rows | Last 50k: 11,765 rows/sec | Overall: 19,556 rows/sec
+Processed 4,200,000 rows | Last 50k: 16,842 rows/sec | Overall: 19,518 rows/sec
+Processed 4,250,000 rows | Last 50k: 16,754 rows/sec | Overall: 19,481 rows/sec
+Processed 4,300,000 rows | Last 50k: 16,667 rows/sec | Overall: 19,442 rows/sec
+Processed 4,350,000 rows | Last 50k: 16,581 rows/sec | Overall: 19,404 rows/sec
+Processed 4,400,000 rows | Last 50k: 11,150 rows/sec | Overall: 19,242 rows/sec
+Processed 4,450,000 rows | Last 50k: 16,327 rows/sec | Overall: 19,204 rows/sec
+Processed 4,500,000 rows | Last 50k: 16,162 rows/sec | Overall: 19,163 rows/sec
+Processed 4,550,000 rows | Last 50k: 16,162 rows/sec | Overall: 19,124 rows/sec
+Processed 4,600,000 rows | Last 50k: 16,162 rows/sec | Overall: 19,086 rows/sec
+Processed 4,650,000 rows | Last 50k: 15,920 rows/sec | Overall: 19,046 rows/sec
+Processed 4,700,000 rows | Last 50k: 10,922 rows/sec | Overall: 18,896 rows/sec
+Processed 4,750,000 rows | Last 50k: 15,610 rows/sec | Overall: 18,854 rows/sec
+Processed 4,800,000 rows | Last 50k: 15,687 rows/sec | Overall: 18,815 rows/sec
+Processed 4,850,000 rows | Last 50k: 15,686 rows/sec | Overall: 18,776 rows/sec
+Processed 4,900,000 rows | Last 50k: 15,686 rows/sec | Overall: 18,739 rows/sec
+Processed 4,950,000 rows | Last 50k: 10,702 rows/sec | Overall: 18,597 rows/sec
+Processed 5,000,000 rows | Last 50k: 15,459 rows/sec | Overall: 18,560 rows/sec
+Processed 5,050,000 rows | Last 50k: 14,953 rows/sec | Overall: 18,516 rows/sec
+Processed 5,100,000 rows | Last 50k: 15,459 rows/sec | Overall: 18,480 rows/sec
+Processed 5,150,000 rows | Last 50k: 15,166 rows/sec | Overall: 18,441 rows/sec
+Processed 5,200,000 rows | Last 50k: 10,583 rows/sec | Overall: 18,310 rows/sec
+Processed 5,250,000 rows | Last 50k: 15,024 rows/sec | Overall: 18,272 rows/sec
+Processed 5,300,000 rows | Last 50k: 14,679 rows/sec | Overall: 18,230 rows/sec
+Processed 5,350,000 rows | Last 50k: 14,350 rows/sec | Overall: 18,184 rows/sec
+Processed 5,400,000 rows | Last 50k: 14,415 rows/sec | Overall: 18,140 rows/sec
+Processed 5,450,000 rows | Last 50k: 10,323 rows/sec | Overall: 18,015 rows/sec
+Processed 5,500,000 rows | Last 50k: 14,545 rows/sec | Overall: 17,976 rows/sec
+Processed 5,550,000 rows | Last 50k: 14,680 rows/sec | Overall: 17,939 rows/sec
+Processed 5,600,000 rows | Last 50k: 14,479 rows/sec | Overall: 17,901 rows/sec
+Processed 5,650,000 rows | Last 50k: 14,350 rows/sec | Overall: 17,862 rows/sec
+Processed 5,700,000 rows | Last 50k: 10,290 rows/sec | Overall: 17,748 rows/sec
+Processed 5,750,000 rows | Last 50k: 14,546 rows/sec | Overall: 17,714 rows/sec
+Processed 5,800,000 rows | Last 50k: 14,350 rows/sec | Overall: 17,678 rows/sec
+Processed 5,850,000 rows | Last 50k: 14,035 rows/sec | Overall: 17,639 rows/sec
+Processed 5,900,000 rows | Last 50k: 14,035 rows/sec | Overall: 17,601 rows/sec
+Processed 5,950,000 rows | Last 50k: 9,867 rows/sec | Overall: 17,485 rows/sec
+Processed 6,000,000 rows | Last 50k: 13,974 rows/sec | Overall: 17,449 rows/sec
+Processed 6,050,000 rows | Last 50k: 14,035 rows/sec | Overall: 17,414 rows/sec
+Processed 6,100,000 rows | Last 50k: 13,793 rows/sec | Overall: 17,376 rows/sec
+Processed 6,150,000 rows | Last 50k: 13,913 rows/sec | Overall: 17,341 rows/sec
+Processed 6,200,000 rows | Last 50k: 13,913 rows/sec | Overall: 17,307 rows/sec
+Processed 6,250,000 rows | Last 50k: 9,758 rows/sec | Overall: 17,201 rows/sec
+Processed 6,300,000 rows | Last 50k: 13,974 rows/sec | Overall: 17,169 rows/sec
+Processed 6,350,000 rows | Last 50k: 13,793 rows/sec | Overall: 17,136 rows/sec
+Processed 6,400,000 rows | Last 50k: 13,560 rows/sec | Overall: 17,101 rows/sec
+Processed 6,450,000 rows | Last 50k: 13,617 rows/sec | Overall: 17,067 rows/sec
+Processed 6,500,000 rows | Last 50k: 9,773 rows/sec | Overall: 16,970 rows/sec
+Processed 6,550,000 rows | Last 50k: 13,115 rows/sec | Overall: 16,932 rows/sec
+Processed 6,600,000 rows | Last 50k: 12,800 rows/sec | Overall: 16,890 rows/sec
+Processed 6,650,000 rows | Last 50k: 13,008 rows/sec | Overall: 16,852 rows/sec
+Processed 6,700,000 rows | Last 50k: 13,114 rows/sec | Overall: 16,817 rows/sec
+Processed 6,750,000 rows | Last 50k: 9,697 rows/sec | Overall: 16,726 rows/sec
+Processed 6,800,000 rows | Last 50k: 13,061 rows/sec | Overall: 16,691 rows/sec
+Processed 6,850,000 rows | Last 50k: 13,008 rows/sec | Overall: 16,657 rows/sec
+Processed 6,900,000 rows | Last 50k: 12,903 rows/sec | Overall: 16,622 rows/sec
+Processed 6,950,000 rows | Last 50k: 12,699 rows/sec | Overall: 16,585 rows/sec
+Processed 7,000,000 rows | Last 50k: 9,496 rows/sec | Overall: 16,497 rows/sec
+Processed 7,050,000 rows | Last 50k: 12,800 rows/sec | Overall: 16,463 rows/sec
+Processed 7,100,000 rows | Last 50k: 12,403 rows/sec | Overall: 16,425 rows/sec
+Processed 7,150,000 rows | Last 50k: 12,261 rows/sec | Overall: 16,386 rows/sec
+Processed 7,200,000 rows | Last 50k: 12,452 rows/sec | Overall: 16,351 rows/sec
+Processed 7,250,000 rows | Last 50k: 8,881 rows/sec | Overall: 16,256 rows/sec
+Processed 7,300,000 rows | Last 50k: 12,076 rows/sec | Overall: 16,218 rows/sec
+Processed 7,350,000 rows | Last 50k: 12,167 rows/sec | Overall: 16,181 rows/sec
+Processed 7,400,000 rows | Last 50k: 12,030 rows/sec | Overall: 16,144 rows/sec
+Processed 7,450,000 rows | Last 50k: 12,066 rows/sec | Overall: 16,107 rows/sec
+Processed 7,500,000 rows | Last 50k: 8,760 rows/sec | Overall: 16,017 rows/sec
+Processed 7,550,000 rows | Last 50k: 11,941 rows/sec | Overall: 15,981 rows/sec
+Processed 7,600,000 rows | Last 50k: 11,985 rows/sec | Overall: 15,946 rows/sec
+Processed 7,650,000 rows | Last 50k: 11,852 rows/sec | Overall: 15,910 rows/sec
+Processed 7,700,000 rows | Last 50k: 11,594 rows/sec | Overall: 15,872 rows/sec
+Processed 7,750,000 rows | Last 50k: 11,808 rows/sec | Overall: 15,837 rows/sec
+Processed 7,800,000 rows | Last 50k: 8,765 rows/sec | Overall: 15,755 rows/sec
+Processed 7,850,000 rows | Last 50k: 11,429 rows/sec | Overall: 15,717 rows/sec
+Processed 7,900,000 rows | Last 50k: 11,594 rows/sec | Overall: 15,682 rows/sec
+Processed 7,950,000 rows | Last 50k: 11,429 rows/sec | Overall: 15,646 rows/sec
+Processed 8,000,000 rows | Last 50k: 11,429 rows/sec | Overall: 15,610 rows/sec
+Processed 8,050,000 rows | Last 50k: 8,625 rows/sec | Overall: 15,531 rows/sec
+Processed 8,100,000 rows | Last 50k: 11,470 rows/sec | Overall: 15,498 rows/sec
+Processed 8,150,000 rows | Last 50k: 11,111 rows/sec | Overall: 15,460 rows/sec
+Processed 8,200,000 rows | Last 50k: 11,189 rows/sec | Overall: 15,424 rows/sec
+Processed 8,250,000 rows | Last 50k: 10,922 rows/sec | Overall: 15,386 rows/sec
+Processed 8,300,000 rows | Last 50k: 8,523 rows/sec | Overall: 15,312 rows/sec
+Processed 8,350,000 rows | Last 50k: 11,111 rows/sec | Overall: 15,277 rows/sec
+Processed 8,400,000 rows | Last 50k: 11,111 rows/sec | Overall: 15,243 rows/sec
+Processed 8,450,000 rows | Last 50k: 11,034 rows/sec | Overall: 15,209 rows/sec
+Processed 8,500,000 rows | Last 50k: 11,035 rows/sec | Overall: 15,175 rows/sec
+Processed 8,550,000 rows | Last 50k: 8,132 rows/sec | Overall: 15,098 rows/sec
+Processed 8,600,000 rows | Last 50k: 10,997 rows/sec | Overall: 15,066 rows/sec
+Processed 8,650,000 rows | Last 50k: 10,885 rows/sec | Overall: 15,032 rows/sec
+Processed 8,700,000 rows | Last 50k: 10,775 rows/sec | Overall: 14,998 rows/sec
+Processed 8,750,000 rows | Last 50k: 10,775 rows/sec | Overall: 14,965 rows/sec
+Processed 8,800,000 rows | Last 50k: 8,163 rows/sec | Overall: 14,894 rows/sec
+Processed 8,850,000 rows | Last 50k: 10,738 rows/sec | Overall: 14,862 rows/sec
+Processed 8,900,000 rows | Last 50k: 10,702 rows/sec | Overall: 14,829 rows/sec
+Processed 8,950,000 rows | Last 50k: 10,775 rows/sec | Overall: 14,798 rows/sec
+Processed 9,000,000 rows | Last 50k: 10,667 rows/sec | Overall: 14,766 rows/sec
+Processed 9,050,000 rows | Last 50k: 10,702 rows/sec | Overall: 14,736 rows/sec
+Processed 9,100,000 rows | Last 50k: 8,090 rows/sec | Overall: 14,669 rows/sec
+Processed 9,150,000 rows | Last 50k: 10,596 rows/sec | Overall: 14,639 rows/sec
+Processed 9,200,000 rows | Last 50k: 10,390 rows/sec | Overall: 14,606 rows/sec
+Processed 9,250,000 rows | Last 50k: 10,526 rows/sec | Overall: 14,576 rows/sec
+Processed 9,300,000 rows | Last 50k: 10,424 rows/sec | Overall: 14,544 rows/sec
+Processed 9,350,000 rows | Last 50k: 8,069 rows/sec | Overall: 14,482 rows/sec
+Processed 9,400,000 rows | Last 50k: 10,492 rows/sec | Overall: 14,453 rows/sec
+Processed 9,450,000 rows | Last 50k: 10,224 rows/sec | Overall: 14,421 rows/sec
+Processed 9,500,000 rows | Last 50k: 10,323 rows/sec | Overall: 14,391 rows/sec
+Processed 9,550,000 rows | Last 50k: 10,191 rows/sec | Overall: 14,360 rows/sec
+Processed 9,600,000 rows | Last 50k: 7,955 rows/sec | Overall: 14,300 rows/sec
+Processed 9,650,000 rows | Last 50k: 10,159 rows/sec | Overall: 14,270 rows/sec
+Processed 9,700,000 rows | Last 50k: 10,000 rows/sec | Overall: 14,239 rows/sec
+Processed 9,750,000 rows | Last 50k: 10,290 rows/sec | Overall: 14,211 rows/sec
+Processed 9,800,000 rows | Last 50k: 10,095 rows/sec | Overall: 14,182 rows/sec
+Processed 9,850,000 rows | Last 50k: 8,767 rows/sec | Overall: 14,137 rows/sec
+Processed 9,900,000 rows | Last 50k: 10,031 rows/sec | Overall: 14,108 rows/sec
+Processed 9,950,000 rows | Last 50k: 9,969 rows/sec | Overall: 14,079 rows/sec
+
+=== Performance Summary ===
+Total rows processed: 9,958,616
+Total columns: 12
+Input size: 2464.79 MB
+Total time: 717.3 seconds (12.0 minutes)
+Processing speed: 13,883 rows/sec
+Data throughput: 3.44 MB/sec
+Output file: inbound/csv\row_item_2025-05-05_assessment_item_transformed_v.csv

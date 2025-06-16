@@ -32,7 +32,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Convert large JSON files from Azure Blob Storage to CSV.")
     parser.add_argument("AZURE_STORAGE_CONNECTION_STRING", help="Azure Storage connection string.")
     parser.add_argument("INPUT_CONTAINER_NAME", help="Name of the input container.")
-    parser.add_argument("INPUT_BLOB_PATH_PREFIX", help="Full path to the input JSON blob.")
+    parser.add_argument("INPUT_BLOB_PATH_PREFIX", help="Path prefix for input JSON blobs. Can use a '*' at the end for wildcard matching.")
     parser.add_argument("OUTPUT_CONTAINER_NAME", help="Name of the output container.")
     parser.add_argument("OUTPUT_BLOB_PATH_PREFIX", help="Path prefix for the output CSV file.")
     parser.add_argument("NESTED_PATH", nargs='?', default="", help="Optional dot-separated path to a nested array to extract, e.g., 'data.records'.")
@@ -194,7 +194,7 @@ class AzureBlobStreamWrapper(RawIOBase):
 
 def main():
     """Main function to orchestrate the JSON to CSV conversion."""
-    start_time = time.time()
+    script_start_time = time.time()
     
     args = parse_args()
     
@@ -222,137 +222,157 @@ def main():
         max_single_put_size=MAX_SINGLE_PUT_SIZE
     )
 
-    # Find the blob that matches the prefix
+    # Find blobs that match the prefix, allowing for a wildcard
+    input_prefix = args.INPUT_BLOB_PATH_PREFIX
+    if input_prefix.endswith('*'):
+        input_prefix = input_prefix.rstrip('*')
+
     container_client = blob_service.get_container_client(args.INPUT_CONTAINER_NAME)
-    matching_blobs = list(container_client.list_blobs(name_starts_with=args.INPUT_BLOB_PATH_PREFIX))
+    print(f"Searching for blobs with prefix '{input_prefix}' in container '{args.INPUT_CONTAINER_NAME}'...")
+    matching_blobs = list(container_client.list_blobs(name_starts_with=input_prefix))
 
     if not matching_blobs:
-        print(f"No blob found with prefix: {args.INPUT_BLOB_PATH_PREFIX}")
+        print(f"No blobs found with prefix: {input_prefix}")
         return
-    elif len(matching_blobs) > 1:
-        print(f"Multiple blobs found with prefix: {args.INPUT_BLOB_PATH_PREFIX}. Expected only one.")
-        return
-
-    blob_name = matching_blobs[0].name
-    input_blob_client = container_client.get_blob_client(blob_name)
-
-    print(f"Downloading and processing blob: {blob_name}")
-
-    # Get blob properties to show file size
-    blob_properties = input_blob_client.get_blob_properties()
-    blob_size_mb = blob_properties.size / (1024 * 1024)
-    print(f"Blob size: {blob_size_mb:.2f} MB")
     
-    # Get the blob input stream directly. download_blob() returns a BlobStream object
-    # which is a file-like object that reads chunks on demand.
-    download_stream = input_blob_client.download_blob()
+    print(f"Found {len(matching_blobs)} blob(s) to process.")
 
-    # Wrap the Azure stream in our custom wrapper, then in a BufferedReader
-    # for full compatibility with ijson's C backend.
-    raw_wrapper = AzureBlobStreamWrapper(download_stream)
-    buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
+    grand_total_rows_written = 0
+    grand_total_input_size_mb = 0
+    
+    for i, blob in enumerate(matching_blobs, 1):
+        blob_start_time = time.time()
+        blob_name = blob.name
+        input_blob_client = container_client.get_blob_client(blob_name)
 
-    # Determine the ijson path based on NESTED_PATH
-    ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
-    
-    # Use ijson_backend.items directly with the download_stream
-    # This is highly memory-efficient as ijson pulls data as needed.
-    print(f"Streaming JSON items from path: {ijson_path}")
-    json_iterator = ijson_backend.items(buffered_stream, ijson_path)
-    
-    # Create a processing pipeline using generators
-     # Flatten and expand only top-level list-of-dict fields (no cross-joins)
-    def expanded_generator():
-        row_count = 0
-        parse_start = time.time()
-        last_time = parse_start
+        print(f"\n--- Processing Blob {i}/{len(matching_blobs)}: {blob_name} ---")
+
+        # Get blob properties to show file size
+        blob_properties = input_blob_client.get_blob_properties()
+        blob_size_mb = blob_properties.size / (1024 * 1024)
+        grand_total_input_size_mb += blob_size_mb
+        print(f"Blob size: {blob_size_mb:.2f} MB")
         
-        for obj in json_iterator:
-            for row in expand_rows_generator(flatten_json(obj)):
-                row_count += 1
-                if row_count % PROGRESS_INTERVAL == 0:
-                    current_time = time.time()
-                    elapsed = current_time - parse_start
-                    interval_time = current_time - last_time
-                    interval_speed = PROGRESS_INTERVAL / interval_time
-                    overall_speed = row_count / elapsed
-                    mb_processed = (row_count / num_rows * blob_size_mb) if 'num_rows' in locals() else 0
-                    
-                    print(f"Processed {row_count:,} rows | Last {PROGRESS_INTERVAL//1000}k: {interval_speed:,.0f} rows/sec | Overall: {overall_speed:,.0f} rows/sec")
-                    last_time = current_time
-                yield row
+        # Get the blob input stream directly. download_blob() returns a BlobStream object
+        # which is a file-like object that reads chunks on demand.
+        download_stream = input_blob_client.download_blob()
 
-    expanded_row_iterator = expanded_generator()
+        # Wrap the Azure stream in our custom wrapper, then in a BufferedReader
+        # for full compatibility with ijson's C backend.
+        raw_wrapper = AzureBlobStreamWrapper(download_stream)
+        buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
 
-    
-    # Get the first row to determine headers
-    try:
-        first_row = next(expanded_row_iterator)
-        headers = list(first_row.keys())
-    except StopIteration:
-        print("Warning: JSON stream was empty, no CSV file created.")
-        return
-
-    # This iterator now contains ALL rows for the entire file.
-    full_row_iterator = itertools.chain([first_row], expanded_row_iterator)
-
-    # --- Main Chunking Loop ---
-    chunk_number = 1
-    total_rows_written = 0
-    base_name = os.path.splitext(os.path.basename(args.INPUT_BLOB_PATH_PREFIX))[0]
-    nested_part = sanitize_filename(args.NESTED_PATH) if args.NESTED_PATH else ""
-    CHUNK_TARGET_SIZE_BYTES = CHUNK_TARGET_SIZE_MB * 1024 * 1024
-
-    # Use a sentinel to cleanly check if the iterator is exhausted
-    row_sentinel = object()
-    row = next(full_row_iterator, row_sentinel)
-
-    while row is not row_sentinel:
-        csv_chunk_filename = f"{base_name}{'_' + nested_part if nested_part else ''}_part_{chunk_number:03}.csv"
-        output_path = os.path.join(args.OUTPUT_BLOB_PATH_PREFIX, csv_chunk_filename)
-        output_blob_client = blob_service.get_blob_client(container=args.OUTPUT_CONTAINER_NAME, blob=output_path)
-
-        print(f"\nStarting chunk {chunk_number}: Uploading to {output_path}")
-
-        # This generator function will provide rows for exactly one chunk
-        def chunk_generator():
-            nonlocal row, row_sentinel, full_row_iterator
-            bytes_in_chunk = 0
+        # Determine the ijson path based on NESTED_PATH
+        ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
+        
+        # Use ijson_backend.items directly with the download_stream
+        # This is highly memory-efficient as ijson pulls data as needed.
+        print(f"Streaming JSON items from path: {ijson_path}")
+        json_iterator = ijson_backend.items(buffered_stream, ijson_path)
+        
+        # Create a processing pipeline using generators
+        # Flatten and expand only top-level list-of-dict fields (no cross-joins)
+        def expanded_generator():
+            row_count = 0
+            parse_start = time.time()
+            last_time = parse_start
             
-            # Loop until the chunk is full or we run out of rows
-            while row is not row_sentinel and bytes_in_chunk < CHUNK_TARGET_SIZE_BYTES:
-                # Estimate the size of the row before yielding it
-                bytes_in_chunk += len((','.join(escape_csv_value(row.get(h)) for h in headers) + '\n'))
-                
-                # Yield the current row, then grab the next one to check in the next iteration
-                current_row = row
-                row = next(full_row_iterator, row_sentinel)
-                yield current_row
+            for obj in json_iterator:
+                for row in expand_rows_generator(flatten_json(obj)):
+                    row_count += 1
+                    if row_count % PROGRESS_INTERVAL == 0:
+                        current_time = time.time()
+                        elapsed = current_time - parse_start
+                        interval_time = current_time - last_time
+                        interval_speed = PROGRESS_INTERVAL / interval_time
+                        overall_speed = row_count / elapsed
+                        
+                        print(f"Processed {row_count:,} rows | Last {PROGRESS_INTERVAL//1000}k: {interval_speed:,.0f} rows/sec | Overall: {overall_speed:,.0f} rows/sec")
+                        last_time = current_time
+                    yield row
 
-        # Create and upload the stream for this chunk
-        csv_streamer = CsvStreamer(chunk_generator(), headers, batch_size=CSV_BATCH_SIZE)
-        output_blob_client.upload_blob(
-            csv_streamer,
-            overwrite=True,
-            content_settings=ContentSettings(content_type='text/csv')
-        )
+        expanded_row_iterator = expanded_generator()
+
         
-        rows_in_this_chunk = csv_streamer.get_row_count()
-        total_rows_written += rows_in_this_chunk
-        print(f"Successfully uploaded chunk {chunk_number} with {rows_in_this_chunk:,} rows.")
-        chunk_number += 1
+        # Get the first row to determine headers
+        try:
+            first_row = next(expanded_row_iterator)
+            headers = list(first_row.keys())
+        except StopIteration:
+            print(f"Warning: JSON stream for blob {blob_name} was empty, no CSV file created.")
+            continue # Move to the next blob
+
+        # This iterator now contains ALL rows for the entire file.
+        full_row_iterator = itertools.chain([first_row], expanded_row_iterator)
+
+        # --- Main Chunking Loop for this blob ---
+        chunk_number = 1
+        total_rows_written_for_blob = 0
+        base_name = os.path.splitext(os.path.basename(blob_name))[0]
+        nested_part = sanitize_filename(args.NESTED_PATH) if args.NESTED_PATH else ""
+        CHUNK_TARGET_SIZE_BYTES = CHUNK_TARGET_SIZE_MB * 1024 * 1024
+
+        # Use a sentinel to cleanly check if the iterator is exhausted
+        row_sentinel = object()
+        row = next(full_row_iterator, row_sentinel)
+
+        while row is not row_sentinel:
+            csv_chunk_filename = f"{base_name}{'_' + nested_part if nested_part else ''}_part_{chunk_number:03}.csv"
+            output_path = os.path.join(args.OUTPUT_BLOB_PATH_PREFIX, csv_chunk_filename)
+            output_blob_client = blob_service.get_blob_client(container=args.OUTPUT_CONTAINER_NAME, blob=output_path)
+
+            print(f"\nStarting chunk {chunk_number}: Uploading to {output_path}")
+
+            # This generator function will provide rows for exactly one chunk
+            def chunk_generator():
+                nonlocal row, row_sentinel, full_row_iterator
+                bytes_in_chunk = 0
+                
+                # Loop until the chunk is full or we run out of rows
+                while row is not row_sentinel and bytes_in_chunk < CHUNK_TARGET_SIZE_BYTES:
+                    # Estimate the size of the row before yielding it
+                    bytes_in_chunk += len((','.join(escape_csv_value(row.get(h)) for h in headers) + '\n'))
+                    
+                    # Yield the current row, then grab the next one to check in the next iteration
+                    current_row = row
+                    row = next(full_row_iterator, row_sentinel)
+                    yield current_row
+
+            # Create and upload the stream for this chunk
+            csv_streamer = CsvStreamer(chunk_generator(), headers, batch_size=CSV_BATCH_SIZE)
+            output_blob_client.upload_blob(
+                csv_streamer,
+                overwrite=True,
+                content_settings=ContentSettings(content_type='text/csv')
+            )
+            
+            rows_in_this_chunk = csv_streamer.get_row_count()
+            total_rows_written_for_blob += rows_in_this_chunk
+            print(f"Successfully uploaded chunk {chunk_number} with {rows_in_this_chunk:,} rows.")
+            chunk_number += 1
+        
+        grand_total_rows_written += total_rows_written_for_blob
+        blob_processing_time = time.time() - blob_start_time
+        
+        # --- Blob Summary ---
+        print(f"\n--- Summary for {blob_name} ---")
+        print(f"Total rows processed: {total_rows_written_for_blob:,}")
+        print(f"Total columns: {len(headers)}")
+        print(f"Chunks created: {chunk_number - 1}")
+        print(f"Blob processing time: {blob_processing_time:.1f} seconds ({blob_processing_time/60:.1f} minutes)")
+        if blob_processing_time > 0:
+            print(f"Processing speed: {total_rows_written_for_blob/blob_processing_time:,.0f} rows/sec")
     
     # --- Final Summary ---
-    total_time = time.time() - start_time
-    print(f"\n=== Job Complete ===")
-    print(f"Total rows processed: {total_rows_written:,}")
-    print(f"Total columns: {len(headers)}")
-    print(f"Input size: {blob_size_mb:.2f} MB")
+    total_time = time.time() - script_start_time
+    print(f"\n\n=== Job Complete ===")
+    print(f"Total blobs processed: {len(matching_blobs)}")
+    print(f"Total rows processed across all blobs: {grand_total_rows_written:,}")
+    print(f"Total input size: {grand_total_input_size_mb:.2f} MB")
     print(f"Total time: {total_time:.1f} seconds ({total_time/60:.1f} minutes)")
-    if total_time > 0:
-        print(f"Processing speed: {total_rows_written/total_time:,.0f} rows/sec")
-        print(f"Data throughput: {blob_size_mb/total_time:.2f} MB/sec")
-    print(f"Total chunks created: {chunk_number - 1}")
-    
+    if total_time > 0 and grand_total_rows_written > 0:
+        print(f"Overall processing speed: {grand_total_rows_written/total_time:,.0f} rows/sec")
+        print(f"Overall data throughput: {grand_total_input_size_mb/total_time:.2f} MB/sec")
+
 if __name__ == "__main__":
     main()

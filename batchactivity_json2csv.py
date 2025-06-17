@@ -322,7 +322,9 @@ def main():
             last_time = parse_start
             
             for obj in json_iterator:
-                for row in expand_rows_generator(flatten_json(obj), keys_to_exclude=exclude_keys_list):
+                # The object is passed directly to the expander, which will handle
+                # both expansion and flattening of the nested items.
+                for row in expand_rows_generator(obj, keys_to_exclude=exclude_keys_list):
                     row_count += 1
                     if row_count % PROGRESS_INTERVAL == 0:
                         current_time = time.time()

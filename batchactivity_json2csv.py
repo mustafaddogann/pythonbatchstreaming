@@ -86,6 +86,71 @@ def expand_rows_generator(row: Dict[str, Any]) -> Generator[Dict[str, Any], None
             yield new_row
 
 
+def flatten_json_for_nested(y: Any, parent_key: str = '', sep: str = '_') -> Dict[str, Any]:
+    """Flattens a nested dictionary for nested path extraction (skips list of dicts)."""
+    out = {}
+    def flatten(x: Any, name: str = ''):
+        if isinstance(x, dict):
+            for a in x:
+                flatten(x[a], f"{name}{a}{sep}")
+        elif isinstance(x, list):
+            # Skip lists of dictionaries for nested path handling
+            if not all(isinstance(i, dict) for i in x if x):
+                # Only flatten non-dict lists
+                out[name[:-1]] = json.dumps(x)
+        else:
+            out[name[:-1]] = x
+    flatten(y, parent_key)
+    return out
+
+
+def extract_nested_rows_streaming(obj: Any, nested_path: str) -> Generator[Dict[str, Any], None, None]:
+    """
+    Generator version of extract_nested_rows that yields rows one at a time.
+    Extracts rows from a nested path while preserving parent context.
+    """
+    def traverse(data: Any, path_parts: List[str], parents: List[Tuple[Dict[str, Any], str]], current_path: List[str]) -> Generator[Dict[str, Any], None, None]:
+        if not path_parts:
+            # We've reached the target path
+            full_prefix = '_'.join(current_path)
+            if isinstance(data, list):
+                # Yield each item in the list with parent context
+                for item in data:
+                    row = {}
+                    # Add all parent data
+                    for parent_obj, parent_path in parents:
+                        row.update(flatten_json_for_nested(parent_obj, parent_path + '_' if parent_path else ''))
+                    # Add current item data
+                    if isinstance(item, dict):
+                        row.update(flatten_json_for_nested(item, full_prefix + '_' if full_prefix else ''))
+                    else:
+                        # Handle non-dict items
+                        row[full_prefix] = item
+                    yield row
+            elif isinstance(data, dict):
+                # Single object at target path
+                row = {}
+                for parent_obj, parent_path in parents:
+                    row.update(flatten_json_for_nested(parent_obj, parent_path + '_' if parent_path else ''))
+                row.update(flatten_json_for_nested(data, full_prefix + '_' if full_prefix else ''))
+                yield row
+            return
+
+        # Still traversing to target path
+        key = path_parts[0]
+        if isinstance(data, dict):
+            if key in data:
+                value = data[key]
+                # Create a filtered parent object (exclude the current key to avoid duplication)
+                parent_obj = {k: v for k, v in data.items() if k != key}
+                new_parents = parents + [(parent_obj, '_'.join(current_path))] if parent_obj else parents
+                yield from traverse(value, path_parts[1:], new_parents, current_path + [key])
+        elif isinstance(data, list):
+            # Need to traverse each item in the list
+            for item in data:
+                yield from traverse(item, path_parts, parents, current_path)
+
+
 def sanitize_filename(filename: str) -> str:
     """Removes illegal characters from a filename."""
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
@@ -252,23 +317,28 @@ def main():
     raw_wrapper = AzureBlobStreamWrapper(download_stream)
     buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
 
-    # Determine the ijson path based on NESTED_PATH
-    ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
-    
-    # Use ijson_backend.items directly with the download_stream
-    # This is highly memory-efficient as ijson pulls data as needed.
-    print(f"Streaming JSON items from path: {ijson_path}")
-    json_iterator = ijson_backend.items(buffered_stream, ijson_path)
-    
-    # Create a processing pipeline using generators
-    # Flatten and expand only top-level list-of-dict fields (no cross-joins)
-    def expanded_generator():
-        row_count = 0
-        parse_start = time.time()
-        last_time = parse_start
+    # Determine if we need to use nested path extraction
+    # This is for paths that traverse through nested structures
+    if args.NESTED_PATH and '.' in args.NESTED_PATH:
+        # Complex nested path - use the traverse logic from the old version
+        print(f"Using nested path extraction for: {args.NESTED_PATH}")
         
-        for obj in json_iterator:
-            for row in expand_rows_generator(flatten_json(obj)):
+        # For nested paths, we need to read the entire structure
+        # The old version reads the whole JSON, so we'll do the same for compatibility
+        blob_data = download_stream.readall()
+        try:
+            raw_data = json.loads(blob_data)
+        except Exception as e:
+            print(f"Failed to parse JSON: {e}")
+            return
+        
+        def expanded_generator():
+            row_count = 0
+            parse_start = time.time()
+            last_time = parse_start
+            
+            # Use the nested path extraction logic
+            for row in extract_nested_rows_streaming(raw_data, args.NESTED_PATH):
                 row_count += 1
                 if row_count % PROGRESS_INTERVAL == 0:
                     current_time = time.time()
@@ -276,11 +346,40 @@ def main():
                     interval_time = current_time - last_time
                     interval_speed = PROGRESS_INTERVAL / interval_time
                     overall_speed = row_count / elapsed
-                    mb_processed = (row_count / num_rows * blob_size_mb) if 'num_rows' in locals() else 0
                     
                     print(f"Processed {row_count:,} rows | Last {PROGRESS_INTERVAL//1000}k: {interval_speed:,.0f} rows/sec | Overall: {overall_speed:,.0f} rows/sec")
                     last_time = current_time
                 yield row
+    else:
+        # Standard streaming path for simple cases
+        ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
+        
+        # Use ijson_backend.items directly with the download_stream
+        # This is highly memory-efficient as ijson pulls data as needed.
+        print(f"Streaming JSON items from path: {ijson_path}")
+        json_iterator = ijson_backend.items(buffered_stream, ijson_path)
+        
+        # Create a processing pipeline using generators
+        # Flatten and expand only top-level list-of-dict fields (no cross-joins)
+        def expanded_generator():
+            row_count = 0
+            parse_start = time.time()
+            last_time = parse_start
+            
+            for obj in json_iterator:
+                for row in expand_rows_generator(flatten_json(obj)):
+                    row_count += 1
+                    if row_count % PROGRESS_INTERVAL == 0:
+                        current_time = time.time()
+                        elapsed = current_time - parse_start
+                        interval_time = current_time - last_time
+                        interval_speed = PROGRESS_INTERVAL / interval_time
+                        overall_speed = row_count / elapsed
+                        mb_processed = (row_count / num_rows * blob_size_mb) if 'num_rows' in locals() else 0
+                        
+                        print(f"Processed {row_count:,} rows | Last {PROGRESS_INTERVAL//1000}k: {interval_speed:,.0f} rows/sec | Overall: {overall_speed:,.0f} rows/sec")
+                        last_time = current_time
+                    yield row
 
     expanded_row_iterator = expanded_generator()
 

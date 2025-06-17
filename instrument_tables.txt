@@ -1,4 +1,4 @@
- nested: instrument.prototype.caregiver_domain_template.items:
+ nested_path: instrument.prototype.caregiver_domain_template.items:
 name
 INSTRUMENT_ID
 INSTRUMENT_PROTOTYPE_UNDER_SIX
@@ -21,7 +21,7 @@ INSTRUMENT_PROTOTYPE_CAREGIVER_DOMAIN_TEMPLATE_ITEMS_HAS_NA_OPTION
 INSTRUMENT_PROTOTYPE_CAREGIVER_DOMAIN_TEMPLATE_ITEMS_CONFIDENTIAL_BY_DEFAULT
 
 
-nested= instrument.prototype.domains.items:
+nested_path= instrument.prototype.domains.items:
 name
 INSTRUMENT_ID
 INSTRUMENT_PROTOTYPE_UNDER_SIX
@@ -49,7 +49,7 @@ INSTRUMENT_PROTOTYPE_DOMAINS_ITEMS_HAS_NA_OPTION
 INSTRUMENT_PROTOTYPE_DOMAINS_ITEMS_CONFIDENTIAL_BY_DEFAULT
 
 
-nested:instrument:
+nested_path:instrument:
 name
 ID
 PROTOTYPE_UNDER_SIX

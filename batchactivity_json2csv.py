@@ -27,9 +27,6 @@ except ImportError:
     import ijson.backends.python as ijson_backend
     print("Warning: C backend for ijson not found. Falling back to slower Python backend.")
 
-# Import ijson itself for get_objects function
-import ijson as ijson_main
-
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="Convert large JSON files from Azure Blob Storage to CSV.")
@@ -39,43 +36,31 @@ def parse_args():
     parser.add_argument("OUTPUT_CONTAINER_NAME", help="Name of the output container.")
     parser.add_argument("OUTPUT_BLOB_PATH_PREFIX", help="Path prefix for the output CSV file.")
     parser.add_argument("NESTED_PATH", nargs='?', default="", help="Optional dot-separated path to a nested array to extract, e.g., 'data.records'.")
-    parser.add_argument("--exclude-keys", type=str, default="", help="Comma-separated list of keys to exclude from the output, e.g., 'items,details'.")
     return parser.parse_args()
 
 # ---------- UTILS ----------
 
-def flatten_json(y: Any, parent_key: str = '', sep: str = '_', keys_to_exclude: List[str] = None) -> Dict[str, Any]:
-    """Flattens a nested dictionary. It avoids flattening lists, leaving them for the expander."""
-    if keys_to_exclude is None:
-        keys_to_exclude = []
+def flatten_json(y: Any, parent_key: str = '', sep: str = '_') -> Dict[str, Any]:
+    """Flattens a nested dictionary."""
     out = {}
     def flatten(x: Any, name: str = ''):
         if isinstance(x, dict):
             for a in x:
-                if a in keys_to_exclude:
-                    continue
                 flatten(x[a], f"{name}{a}{sep}")
         elif isinstance(x, list):
-            # Keep the list intact for the expand_rows_generator to handle.
-            # Only convert to JSON string if it's not a list of dictionaries,
-            # which is the target for expansion.
-            if not all(isinstance(i, dict) for i in x):
-                out[name[:-1]] = json.dumps(x)
-            else:
-                out[name[:-1]] = x 
+            # Convert lists to JSON strings to prevent memory issues
+            out[name[:-1]] = json.dumps(x)
         else:
             out[name[:-1]] = x
     flatten(y, parent_key)
     return out
 
-def expand_rows_generator(row: Dict[str, Any], keys_to_exclude: List[str] = None) -> Generator[Dict[str, Any], None, None]:
+def expand_rows_generator(row: Dict[str, Any]) -> Generator[Dict[str, Any], None, None]:
     """
-    Expands the first list-of-dicts field in a row into multiple rows.
-    Any nested objects within the expanded list items are flattened.
+    Expands only the first list-of-dicts field in a row into multiple rows.
+    Optimized to reduce memory usage.
     """
-    if keys_to_exclude is None:
-        keys_to_exclude = []
-        
+    # First pass: find expandable list
     expandable_list_key = None
     expandable_list = None
     
@@ -86,16 +71,18 @@ def expand_rows_generator(row: Dict[str, Any], keys_to_exclude: List[str] = None
             break
     
     if expandable_list_key is None:
+        # No expansion needed - convert any remaining lists to JSON strings
         yield {k: json.dumps(v) if isinstance(v, list) else v for k, v in row.items()}
     else:
+        # Build base row without the expandable list
         base_row = {k: json.dumps(v) if isinstance(v, list) else v 
                    for k, v in row.items() if k != expandable_list_key}
         
+        # Expand the list
         for item in expandable_list:
             new_row = base_row.copy()
-            # Flatten the item from the list, applying exclusions here.
-            flat_item = flatten_json(item, parent_key=f"{expandable_list_key}_", keys_to_exclude=keys_to_exclude)
-            new_row.update(flat_item)
+            flat = flatten_json(item, parent_key=f"{expandable_list_key}_")
+            new_row.update(flat)
             yield new_row
 
 
@@ -275,97 +262,23 @@ def main():
         raw_wrapper = AzureBlobStreamWrapper(download_stream)
         buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
 
-        # Determine the ijson path based on NESTED_PATH and create the iterator
-        if args.NESTED_PATH:
-            ijson_path = f'{args.NESTED_PATH}.item'
-            print(f"Streaming JSON items from path: {ijson_path}")
-            json_iterator = ijson_backend.items(buffered_stream, ijson_path)
-        else:
-            # This logic robustly handles a file that contains:
-            # 1. A single root object: `{...}`
-            # 2. An array of objects: `[{...}, {...}]`
-            # It does this by reading the first top-level object from the stream.
-            # If that object is a list, it iterates over it. Otherwise, it treats
-            # the single object as the only item in the stream.
-            print("No NESTED_PATH provided. Reading top-level objects from the JSON stream.")
-            ijson_path = "(top-level)"
-            
-            def get_root_iterator(stream):
-                try:
-                    # get_objects reads one top-level JSON value at a time.
-                    objects = ijson_main.parse(stream)
-                    # We need to build the first object from parse events
-                    builder = None
-                    for prefix, event, value in objects:
-                        if event == 'start_map' and prefix == '':
-                            # Starting a root object
-                            builder = {}
-                            stack = [builder]
-                            current_key = None
-                        elif event == 'start_array' and prefix == '':
-                            # Starting a root array
-                            builder = []
-                            stack = [builder]
-                        elif event == 'map_key':
-                            current_key = value
-                        elif event in ('string', 'number', 'boolean', 'null'):
-                            if isinstance(stack[-1], dict):
-                                stack[-1][current_key] = value
-                            elif isinstance(stack[-1], list):
-                                stack[-1].append(value)
-                        elif event == 'start_map':
-                            new_dict = {}
-                            if isinstance(stack[-1], dict):
-                                stack[-1][current_key] = new_dict
-                            elif isinstance(stack[-1], list):
-                                stack[-1].append(new_dict)
-                            stack.append(new_dict)
-                        elif event == 'start_array':
-                            new_array = []
-                            if isinstance(stack[-1], dict):
-                                stack[-1][current_key] = new_array
-                            elif isinstance(stack[-1], list):
-                                stack[-1].append(new_array)
-                            stack.append(new_array)
-                        elif event in ('end_map', 'end_array'):
-                            stack.pop()
-                            if len(stack) == 0:
-                                # We've completed the root object/array
-                                break
-                    
-                    if builder is None:
-                        raise StopIteration
-                    
-                    if isinstance(builder, list):
-                        # The root was an array, so we can iterate its elements.
-                        print("Detected a top-level array. Iterating through its elements.")
-                        return iter(builder)
-                    else:
-                        # The root was a single object.
-                        print("Detected a single top-level object.")
-                        return iter([builder])
-                except StopIteration:
-                    # The file was empty or contained only whitespace.
-                    print("Warning: JSON stream appears to be empty.")
-                    return iter([]) # Return an empty iterator
-            
-            json_iterator = get_root_iterator(buffered_stream)
+        # Determine the ijson path based on NESTED_PATH
+        ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
+        
+        # Use ijson_backend.items directly with the download_stream
+        # This is highly memory-efficient as ijson pulls data as needed.
+        print(f"Streaming JSON items from path: {ijson_path}")
+        json_iterator = ijson_backend.items(buffered_stream, ijson_path)
         
         # Create a processing pipeline using generators
         # Flatten and expand only top-level list-of-dict fields (no cross-joins)
-        exclude_keys_list = [key.strip() for key in args.exclude_keys.split(',') if key.strip()]
-        if exclude_keys_list:
-            print(f"Excluding keys: {exclude_keys_list}")
-
         def expanded_generator():
             row_count = 0
             parse_start = time.time()
             last_time = parse_start
             
             for obj in json_iterator:
-                # The object is passed directly to the expander, which will handle
-                # both expansion and flattening of the nested items.
-                for row in expand_rows_generator(obj, keys_to_exclude=exclude_keys_list):
+                for row in expand_rows_generator(flatten_json(obj)):
                     row_count += 1
                     if row_count % PROGRESS_INTERVAL == 0:
                         current_time = time.time()

@@ -2,37 +2,132 @@ import os
 import sys
 import time
 
-# Add packages directory to Python path
-app_dir = os.path.dirname(os.path.abspath(__file__))
-packages_dir = os.path.join(app_dir, 'packages')
-if os.path.exists(packages_dir):
-    sys.path.insert(0, packages_dir)
-    # Also add to PATH for DLLs
-    os.environ["PATH"] = packages_dir + os.pathsep + os.environ.get("PATH", "")
+# Add packages directory to path BEFORE any other imports
+# This script needs to find dependencies in the 'packages' directory
+try:
+    # When running from Azure Batch, find packages relative to script location
+    app_path = os.path.abspath(sys.argv[0])
+    app_dir = os.path.dirname(app_path)
+    packages_dir = os.path.join(app_dir, 'packages')
+    if os.path.isdir(packages_dir):
+        sys.path.insert(0, packages_dir)
+        # Also add to system PATH for DLLs
+        os.environ["PATH"] = packages_dir + os.pathsep + os.environ["PATH"]
+except Exception:
+    # Fallback for local execution
+    cwd = os.getcwd()
+    packages_dir = os.path.join(cwd, 'packages')
+    if os.path.isdir(packages_dir) and packages_dir not in sys.path:
+        sys.path.insert(0, packages_dir)
+        os.environ["PATH"] = packages_dir + os.pathsep + os.environ["PATH"]
 
-import re
-import argparse
+# Check if Visual C++ runtime is installed, install if not (Windows only)
+if sys.platform == "win32":
+    try:
+        # Try to import the C backend to see if it works
+        import ijson.backends.yajl2_c
+        print("Visual C++ runtime is already installed.")
+    except ImportError as e:
+        print(f"C backend import failed: {e}")
+        print("Visual C++ runtime may be missing. Attempting to install...")
+        
+        # Check if we're running with admin privileges (common in Batch)
+        import ctypes
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            is_admin = False
+        
+        if is_admin:
+            try:
+                import subprocess
+                import urllib.request
+                
+                # Download VC++ runtime
+                vc_redist_url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+                vc_redist_path = os.path.join(os.environ.get('TEMP', '.'), 'vc_redist.x64.exe')
+                
+                print(f"Downloading Visual C++ runtime from {vc_redist_url}...")
+                urllib.request.urlretrieve(vc_redist_url, vc_redist_path)
+                
+                # Install silently
+                print("Installing Visual C++ runtime...")
+                result = subprocess.run([vc_redist_path, '/install', '/quiet', '/norestart'], 
+                                      capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    print("Visual C++ runtime installed successfully.")
+                    # Clean up
+                    try:
+                        os.remove(vc_redist_path)
+                    except:
+                        pass
+                else:
+                    print(f"Installation failed with code {result.returncode}")
+                    print(f"stdout: {result.stdout}")
+                    print(f"stderr: {result.stderr}")
+                    
+            except Exception as install_error:
+                print(f"Failed to install Visual C++ runtime: {install_error}")
+        else:
+            print("Not running with admin privileges, cannot install Visual C++ runtime.")
+
+import io
+import csv
 import json
-from typing import Any, Dict, List, Iterator, Generator, Tuple
-from azure.storage.blob import BlobServiceClient, ContentSettings
-from io import BytesIO, BufferedReader, RawIOBase
-import ijson
+import logging
+import argparse
 import itertools
+import requests
+from io import BytesIO, RawIOBase
+from datetime import datetime, timedelta
+from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
+from typing import Any, Dict, List, Iterator, Generator, Tuple
+import ijson
+import re
 
 # Recommended: Use the faster C backend if available
 try:
-    import ijson.backends.yajl2_c as ijson_backend
-    print("SUCCESS: Using fast C backend (yajl2_c)")
+    import ijson.backends.yajl2_cffi as ijson_backend
+    print("Using yajl2_cffi ijson backend.")
+    backend_name = "yajl2_cffi"
 except ImportError:
-    import ijson.backends.python as ijson_backend
-    print("Warning: C backend for ijson not found. Falling back to slower Python backend.")
+    try:
+        import ijson.backends.yajl2_c as ijson_backend
+        print("Using yajl2_c ijson backend.")
+        backend_name = "yajl2_c"
+    except ImportError as e:
+        print("="*80)
+        print("WARNING: ijson C backend not found.")
+        print(f"ImportError: {e}")
+        print("The high-performance C backend for JSON parsing (yajl) could not be loaded.")
+        print("This is likely because the Visual C++ Redistributable is not installed on the Azure Batch node.")
+        print("\nPERFORMANCE IMPACT:")
+        print("- Your 200MB file will take ~40 minutes instead of ~3-5 minutes")
+        print("- Processing rate will be 10-50x slower")
+        print("\nTO FIX THIS:")
+        print("Add a Start Task to your Azure Batch pool to install Visual C++ Runtime.")
+        print("Go to your Batch Pool -> Start Task -> and configure:")
+        print("  Command line: cmd /c \"powershell -Command \\\"Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile vc_redist.x64.exe; Start-Process -FilePath .\\vc_redist.x64.exe -ArgumentList '/install', '/quiet', '/norestart' -Wait; Remove-Item .\\vc_redist.x64.exe\\\"\"")
+        print("  User identity: Task user (Admin)")
+        print("  Wait for success: Enabled")
+        print("\nFalling back to slower Python backend...")
+        print("="*80)
+        
+        import ijson.backends.python as ijson_backend
+        backend_name = "python"
+
+# Print diagnostic info about the backend
+print(f"ijson backend module: {ijson_backend}")
+print(f"ijson backend name: {backend_name}")
+print(f"ijson backend file: {getattr(ijson_backend, '__file__', 'Unknown')}")
 
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="Convert large JSON files from Azure Blob Storage to CSV.")
     parser.add_argument("AZURE_STORAGE_CONNECTION_STRING", help="Azure Storage connection string.")
     parser.add_argument("INPUT_CONTAINER_NAME", help="Name of the input container.")
-    parser.add_argument("INPUT_BLOB_PATH_PREFIX", help="Path prefix for input JSON blobs. Can use a '*' at the end for wildcard matching.")
+    parser.add_argument("INPUT_BLOB_PATH_PREFIX", help="Full path to the input JSON blob.")
     parser.add_argument("OUTPUT_CONTAINER_NAME", help="Name of the output container.")
     parser.add_argument("OUTPUT_BLOB_PATH_PREFIX", help="Path prefix for the output CSV file.")
     parser.add_argument("NESTED_PATH", nargs='?', default="", help="Optional dot-separated path to a nested array to extract, e.g., 'data.records'.")
@@ -48,7 +143,9 @@ def flatten_json(y: Any, parent_key: str = '', sep: str = '_') -> Dict[str, Any]
             for a in x:
                 flatten(x[a], f"{name}{a}{sep}")
         elif isinstance(x, list):
-            # Convert lists to JSON strings to prevent memory issues
+            # To prevent memory issues, we avoid expanding lists here.
+            # Lists of simple types will be converted to a string.
+            # Lists of dicts should be handled by expand_rows_generator.
             out[name[:-1]] = json.dumps(x)
         else:
             out[name[:-1]] = x
@@ -58,27 +155,23 @@ def flatten_json(y: Any, parent_key: str = '', sep: str = '_') -> Dict[str, Any]
 def expand_rows_generator(row: Dict[str, Any]) -> Generator[Dict[str, Any], None, None]:
     """
     Expands only the first list-of-dicts field in a row into multiple rows.
-    Optimized to reduce memory usage.
+    All other lists (simple or nested) are serialized into strings.
+    Prevents Cartesian explosion by not cross-joining multiple lists.
     """
-    # First pass: find expandable list
+    base_row = {}
     expandable_list_key = None
-    expandable_list = None
-    
+    expandable_list = []
+
     for k, v in row.items():
-        if isinstance(v, list) and v and isinstance(v[0], dict):
+        if isinstance(v, list) and v and isinstance(v[0], dict) and expandable_list_key is None:
             expandable_list_key = k
             expandable_list = v
-            break
-    
+        else:
+            base_row[k] = json.dumps(v) if isinstance(v, list) else v
+
     if expandable_list_key is None:
-        # No expansion needed - convert any remaining lists to JSON strings
-        yield {k: json.dumps(v) if isinstance(v, list) else v for k, v in row.items()}
+        yield base_row
     else:
-        # Build base row without the expandable list
-        base_row = {k: json.dumps(v) if isinstance(v, list) else v 
-                   for k, v in row.items() if k != expandable_list_key}
-        
-        # Expand the list
         for item in expandable_list:
             new_row = base_row.copy()
             flat = flatten_json(item, parent_key=f"{expandable_list_key}_")
@@ -92,21 +185,17 @@ def sanitize_filename(filename: str) -> str:
 
 def escape_csv_value(value: Any) -> str:
     """
-    Escapes a value for Snowflake/ADF-compatible CSV formatting, based on the provided
-    working csvsplitter.py script.
-    - Handles None values by creating an empty quoted field: "".
-    - Escapes backslashes (\\) with a preceding backslash (\\\\).
-    - Escapes double quotes (") with a preceding backslash (\\").
-    - Encloses the entire field in double quotes.
+    Escapes a value for Snowflake-compatible CSV formatting based on provided working script.
+    This uses backslash as the escape character for quotes and backslashes.
+    All fields are enclosed in double quotes.
+    None values become empty quoted fields "".
     """
     if value is None:
-        # For None, return an empty quoted string as per Snowflake requirements.
-        return '""'
+        s_val = ''
+    else:
+        s_val = str(value)
     
-    # Convert the value to its string representation.
-    s_val = str(value)
-    
-    # First, replace backslashes, then double quotes, as in the reference script.
+    # Escape backslashes first, then double quotes with a backslash
     s_val = s_val.replace('\\', '\\\\').replace('"', '\\"')
     
     return f'"{s_val}"'
@@ -116,263 +205,281 @@ class CsvStreamer(RawIOBase):
     A file-like object that generates CSV data on the fly.
     It takes an iterator of dictionaries and yields byte chunks for CSV.
     """
-    def __init__(self, row_iterator: Iterator[Dict[str, Any]], headers: List[str], batch_size: int = 10000):
+    def __init__(self, row_iterator: Iterator[Dict[str, Any]], headers: List[str]):
         self.row_iterator = row_iterator
         self.headers = headers
         self._buffer = BytesIO()
         self._write_header = True
         self._row_count = 0
-        self._batch_size = batch_size
-        self._exhausted = False
+        self._bytes_written = 0
 
     def readable(self):
         return True
 
-    def _write_batch_to_buffer(self):
-        """Writes a batch of rows to the internal buffer."""
+    def _write_to_internal_buffer(self):
+        """Writes the next chunk of CSV data to the internal BytesIO buffer."""
         if self._write_header:
             header_line = (','.join(map(escape_csv_value, self.headers)) + '\n').encode('utf-8')
             self._buffer.write(header_line)
+            self._bytes_written += len(header_line)
             self._write_header = False
 
-        # Process a batch of rows
-        batch_count = 0
         try:
-            while batch_count < self._batch_size:
-                row = next(self.row_iterator)
-                line = ','.join(escape_csv_value(row.get(h)) for h in self.headers) + '\n'
-                self._buffer.write(line.encode('utf-8'))
-                self._row_count += 1
-                batch_count += 1
+            row = next(self.row_iterator)
+            line = ','.join(escape_csv_value(row.get(h)) for h in self.headers) + '\n'
+            line_bytes = line.encode('utf-8')
+            self._buffer.write(line_bytes)
+            self._bytes_written += len(line_bytes)
+            self._row_count += 1
         except StopIteration:
-            self._exhausted = True
+            pass # No more rows
 
     def read(self, n=-1):
         """Reads up to n bytes from the stream."""
-        # If buffer is empty, fill it with a new batch
-        if self._buffer.tell() == self._buffer.getbuffer().nbytes:
-            if self._exhausted:
-                return b''  # No more data
-            
-            self._buffer = BytesIO()  # Reset buffer
-            self._write_batch_to_buffer()
-            self._buffer.seek(0)  # Reset to beginning for reading
+        if self._buffer.tell() == self._buffer.getbuffer().nbytes: # If buffer is empty or fully consumed
+            self._buffer = BytesIO() # Reset buffer
+            self._write_to_internal_buffer()
+            if self._buffer.tell() == 0: # If nothing was written to buffer, means iterator is exhausted
+                return b'' # End of stream
 
-        # Read from buffer
-        if n == -1:
-            return self._buffer.read()
-        else:
-            return self._buffer.read(n)
+        # Read from internal buffer
+        self._buffer.seek(0)
+        chunk = self._buffer.read(n if n != -1 else self._buffer.getbuffer().nbytes)
+        # Shift remaining data to the beginning of the buffer for next read
+        remaining = self._buffer.read()
+        self._buffer = BytesIO(remaining)
+        return chunk
     
     def get_row_count(self):
         return self._row_count
+    
+    def get_bytes_written(self):
+        return self._bytes_written
 
-class AzureBlobStreamWrapper(RawIOBase):
+
+class ChunkedCsvStreamer:
     """
-    A wrapper for the Azure Blob Storage stream to make it compatible with
-    libraries that expect a standard raw IO stream (like ijson's C backend).
-
-    - Implements readable() which is missing from the Azure stream object.
-    - Implements a correct readinto() using the stream's read() method,
-      bypassing a bug in some versions of the Azure SDK's readinto().
+    Manages streaming CSV data in chunks, creating new streamers when size threshold is reached.
     """
-    def __init__(self, download_stream):
-        self._stream = download_stream
+    def __init__(self, row_iterator: Iterator[Dict[str, Any]], headers: List[str], chunk_threshold_bytes: int):
+        self.row_iterator = row_iterator
+        self.headers = headers
+        self.chunk_threshold_bytes = chunk_threshold_bytes
+        self.current_streamer = None
+        self.total_rows = 0
+        self.chunk_number = 0
+        self._exhausted = False
+        self._peeked_row = None
+        
+    def get_next_chunk_streamer(self) -> Tuple[CsvStreamer, bool]:
+        """
+        Returns a tuple of (streamer, is_last_chunk).
+        The streamer will stop when it reaches the chunk threshold or runs out of data.
+        """
+        if self._exhausted:
+            return None, True
+            
+        self.chunk_number += 1
+        
+        # Create a limited iterator that stops at chunk threshold
+        def limited_iterator():
+            bytes_in_chunk = 0
+            rows_in_chunk = 0
+            
+            # If we have a peeked row from previous chunk, yield it first
+            if self._peeked_row is not None:
+                yield self._peeked_row
+                self.total_rows += 1
+                rows_in_chunk += 1
+                self._peeked_row = None
+            
+            # Process rows in batches to reduce overhead
+            batch_size = 1000  # Process 1000 rows at a time before checking size
+            
+            for row in self.row_iterator:
+                yield row
+                self.total_rows += 1
+                rows_in_chunk += 1
+                
+                # Only check size every batch_size rows to reduce overhead
+                if rows_in_chunk % batch_size == 0:
+                    # Estimate bytes based on average row size
+                    # Assume average row is ~1KB (this is a rough estimate)
+                    estimated_bytes = rows_in_chunk * 1024
+                    
+                    if estimated_bytes >= self.chunk_threshold_bytes:
+                        print(f"  Chunk {self.chunk_number} reached size limit with {rows_in_chunk} rows")
+                        return
+            
+            # If we get here, iterator is exhausted
+            self._exhausted = True
+            print(f"  Chunk {self.chunk_number} is final chunk with {rows_in_chunk} rows")
+        
+        streamer = CsvStreamer(limited_iterator(), self.headers)
+        return streamer, self._exhausted
+    
+    def get_total_rows(self):
+        return self.total_rows
 
-    def readable(self):
-        return True
-
-    def readinto(self, b):
-        """Reads up to len(b) bytes into b, and returns the number of bytes read."""
-        chunk = self._stream.read(len(b))
-        bytes_read = len(chunk)
-        b[:bytes_read] = chunk
-        return bytes_read
-
-    def read(self, n=-1):
-        return self._stream.read(n)
 
 def main():
-    """Main function to orchestrate the JSON to CSV conversion."""
-    script_start_time = time.time()
+    """
+    Main function to orchestrate the JSON to CSV conversion process.
+    """
+    start_time = time.time()
+    
+    print(f"--- Running script version 1.7: Performance Optimized ---")
+    print(f"Script started at: {datetime.now()}")
+    print(f"Python version: {sys.version}")
+    print(f"ijson backend: {backend_name}")
     
     args = parse_args()
-    
-    # Performance tuning parameters (can be overridden by environment variables)
-    BUFFER_SIZE = int(os.environ.get('JSON2CSV_BUFFER_SIZE', 64 * 1024 * 1024))      # Default 64MB
-    CSV_BATCH_SIZE = int(os.environ.get('JSON2CSV_BATCH_SIZE', 10000))                 # Default 10k rows
-    PROGRESS_INTERVAL = int(os.environ.get('JSON2CSV_PROGRESS_INTERVAL', 50000))      # Default 50k rows
-    CHUNK_TARGET_SIZE_MB = int(os.environ.get('JSON2CSV_CHUNK_TARGET_SIZE_MB', 150))   # Default 150MB
-    # Azure SDK tuning
-    UPLOAD_CHUNK_SIZE = int(os.environ.get('JSON2CSV_UPLOAD_CHUNK_SIZE', 8 * 1024 * 1024)) # Default 8MB block size
-    MAX_SINGLE_PUT_SIZE = int(os.environ.get('JSON2CSV_MAX_SINGLE_PUT_SIZE', 64 * 1024 * 1024)) # Default 64MB threshold for single upload
 
-    print(f"=== Performance Configuration ===")
-    print(f"Read Buffer size: {BUFFER_SIZE / (1024 * 1024):.0f} MB")
-    print(f"CSV Batch size: {CSV_BATCH_SIZE:,} rows")
-    print(f"Progress Interval: {PROGRESS_INTERVAL:,} rows")
-    print(f"Upload Block Size: {UPLOAD_CHUNK_SIZE / (1024 * 1024):.0f} MB")
-    print(f"Max Single Put Size: {MAX_SINGLE_PUT_SIZE / (1024 * 1024):.0f} MB")
-    print(f"CSV Chunk Target Size: {CHUNK_TARGET_SIZE_MB} MB")
-    print()
-    
-    blob_service = BlobServiceClient.from_connection_string(
-        args.AZURE_STORAGE_CONNECTION_STRING,
-        max_block_size=UPLOAD_CHUNK_SIZE,
-        max_single_put_size=MAX_SINGLE_PUT_SIZE
-    )
+    # Define chunk size for output files (e.g., 150MB)
+    CHUNK_THRESHOLD_BYTES = 150 * 1024 * 1024
 
-    # Find blobs that match the prefix, allowing for a wildcard
-    input_prefix = args.INPUT_BLOB_PATH_PREFIX
-    if input_prefix.endswith('*'):
-        input_prefix = input_prefix.rstrip('*')
+    try:
+        blob_service = BlobServiceClient.from_connection_string(args.AZURE_STORAGE_CONNECTION_STRING)
+        input_blob_client = blob_service.get_blob_client(container=args.INPUT_CONTAINER_NAME, blob=args.INPUT_BLOB_PATH_PREFIX)
 
-    container_client = blob_service.get_container_client(args.INPUT_CONTAINER_NAME)
-    print(f"Searching for blobs with prefix '{input_prefix}' in container '{args.INPUT_CONTAINER_NAME}'...")
-    matching_blobs = list(container_client.list_blobs(name_starts_with=input_prefix))
+        # Generate a SAS token to stream the blob directly with the `requests` library.
+        # This bypasses a bug in the Azure SDK's streaming downloader and allows true streaming.
+        print("Generating SAS token for direct download.")
+        sas_start = time.time()
+        sas_token = generate_blob_sas(
+            account_name=input_blob_client.account_name,
+            container_name=input_blob_client.container_name,
+            blob_name=input_blob_client.blob_name,
+            account_key=blob_service.credential.account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.utcnow() + timedelta(hours=1)
+        )
+        blob_url_with_sas = f"{input_blob_client.url}?{sas_token}"
+        print(f"SAS token generated in {time.time() - sas_start:.2f} seconds")
 
-    if not matching_blobs:
-        print(f"No blobs found with prefix: {input_prefix}")
-        return
-    
-    print(f"Found {len(matching_blobs)} blob(s) to process.")
-
-    grand_total_rows_written = 0
-    grand_total_input_size_mb = 0
-    
-    for i, blob in enumerate(matching_blobs, 1):
-        blob_start_time = time.time()
-        blob_name = blob.name
-        input_blob_client = container_client.get_blob_client(blob_name)
-
-        print(f"\n--- Processing Blob {i}/{len(matching_blobs)}: {blob_name} ---")
-
-        # Get blob properties to show file size
-        blob_properties = input_blob_client.get_blob_properties()
-        blob_size_mb = blob_properties.size / (1024 * 1024)
-        grand_total_input_size_mb += blob_size_mb
-        print(f"Blob size: {blob_size_mb:.2f} MB")
+        print(f"Starting blob download and processing...")
+        download_start = time.time()
         
-        # Get the blob input stream directly. download_blob() returns a BlobStream object
-        # which is a file-like object that reads chunks on demand.
-        download_stream = input_blob_client.download_blob()
+        with requests.get(blob_url_with_sas, stream=True) as r:
+            r.raise_for_status()
+            print(f"HTTP response received in {time.time() - download_start:.2f} seconds")
 
-        # Wrap the Azure stream in our custom wrapper, then in a BufferedReader
-        # for full compatibility with ijson's C backend.
-        raw_wrapper = AzureBlobStreamWrapper(download_stream)
-        buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
+            # Get blob size from Content-Length header to determine if we need to chunk.
+            input_blob_size = int(r.headers.get('Content-Length', 0))
+            if input_blob_size > 0:
+                print(f"Input blob size: {input_blob_size / (1024*1024):.2f} MB")
+            else:
+                print("Warning: Could not determine input blob size from header. Assuming small file for single CSV output.")
 
-        # Determine the ijson path based on NESTED_PATH
-        ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
-        
-        # Use ijson_backend.items directly with the download_stream
-        # This is highly memory-efficient as ijson pulls data as needed.
-        print(f"Streaming JSON items from path: {ijson_path}")
-        json_iterator = ijson_backend.items(buffered_stream, ijson_path)
-        
-        # Create a processing pipeline using generators
-        # Flatten and expand only top-level list-of-dict fields (no cross-joins)
-        def expanded_generator():
-            row_count = 0
-            parse_start = time.time()
-            last_time = parse_start
+            ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
             
-            for obj in json_iterator:
-                for row in expand_rows_generator(flatten_json(obj)):
-                    row_count += 1
-                    if row_count % PROGRESS_INTERVAL == 0:
-                        current_time = time.time()
-                        elapsed = current_time - parse_start
-                        interval_time = current_time - last_time
-                        interval_speed = PROGRESS_INTERVAL / interval_time
-                        overall_speed = row_count / elapsed
-                        
-                        print(f"Processed {row_count:,} rows | Last {PROGRESS_INTERVAL//1000}k: {interval_speed:,.0f} rows/sec | Overall: {overall_speed:,.0f} rows/sec")
-                        last_time = current_time
-                    yield row
+            # Use larger buffer for better performance
+            buffer_size = 4 * 1024 * 1024  # 4MB buffer
+            print(f"Using ijson with {buffer_size / (1024*1024):.1f}MB buffer")
+            
+            json_parse_start = time.time()
+            json_iterator = ijson_backend.items(r.raw, ijson_path, buf_size=buffer_size)
 
-        expanded_row_iterator = expanded_generator()
-
-        
-        # Get the first row to determine headers
-        try:
-            first_row = next(expanded_row_iterator)
-            headers = list(first_row.keys())
-        except StopIteration:
-            print(f"Warning: JSON stream for blob {blob_name} was empty, no CSV file created.")
-            continue # Move to the next blob
-
-        # This iterator now contains ALL rows for the entire file.
-        full_row_iterator = itertools.chain([first_row], expanded_row_iterator)
-
-        # --- Main Chunking Loop for this blob ---
-        chunk_number = 1
-        total_rows_written_for_blob = 0
-        base_name = os.path.splitext(os.path.basename(blob_name))[0]
-        nested_part = sanitize_filename(args.NESTED_PATH) if args.NESTED_PATH else ""
-        CHUNK_TARGET_SIZE_BYTES = CHUNK_TARGET_SIZE_MB * 1024 * 1024
-
-        # Use a sentinel to cleanly check if the iterator is exhausted
-        row_sentinel = object()
-        row = next(full_row_iterator, row_sentinel)
-
-        while row is not row_sentinel:
-            csv_chunk_filename = f"{base_name}{'_' + nested_part if nested_part else ''}_part_{chunk_number:03}.csv"
-            output_path = os.path.join(args.OUTPUT_BLOB_PATH_PREFIX, csv_chunk_filename)
-            output_blob_client = blob_service.get_blob_client(container=args.OUTPUT_CONTAINER_NAME, blob=output_path)
-
-            print(f"\nStarting chunk {chunk_number}: Uploading to {output_path}")
-
-            # This generator function will provide rows for exactly one chunk
-            def chunk_generator():
-                nonlocal row, row_sentinel, full_row_iterator
-                bytes_in_chunk = 0
-                
-                # Loop until the chunk is full or we run out of rows
-                while row is not row_sentinel and bytes_in_chunk < CHUNK_TARGET_SIZE_BYTES:
-                    # Estimate the size of the row before yielding it
-                    bytes_in_chunk += len((','.join(escape_csv_value(row.get(h)) for h in headers) + '\n'))
+            # Create a processing pipeline using generators
+            def expanded_generator():
+                item_count = 0
+                expand_count = 0
+                for obj in json_iterator:
+                    item_count += 1
+                    if item_count % 10000 == 0:
+                        elapsed = time.time() - json_parse_start
+                        print(f"  Processed {item_count} JSON items in {elapsed:.1f}s ({item_count/elapsed:.0f} items/sec)")
                     
-                    # Yield the current row, then grab the next one to check in the next iteration
-                    current_row = row
-                    row = next(full_row_iterator, row_sentinel)
-                    yield current_row
+                    # In this version, we only expand top-level list-of-dicts
+                    expanded_rows = [obj]
+                    list_fields_to_expand = {k for k, v in obj.items() if isinstance(v, list) and v and isinstance(v[0], dict)}
 
-            # Create and upload the stream for this chunk
-            csv_streamer = CsvStreamer(chunk_generator(), headers, batch_size=CSV_BATCH_SIZE)
-            output_blob_client.upload_blob(
-                csv_streamer,
-                overwrite=True,
-                content_settings=ContentSettings(content_type='text/csv')
-            )
-            
-            rows_in_this_chunk = csv_streamer.get_row_count()
-            total_rows_written_for_blob += rows_in_this_chunk
-            print(f"Successfully uploaded chunk {chunk_number} with {rows_in_this_chunk:,} rows.")
-            chunk_number += 1
-        
-        grand_total_rows_written += total_rows_written_for_blob
-        blob_processing_time = time.time() - blob_start_time
-        
-        # --- Blob Summary ---
-        print(f"\n--- Summary for {blob_name} ---")
-        print(f"Total rows processed: {total_rows_written_for_blob:,}")
-        print(f"Total columns: {len(headers)}")
-        print(f"Chunks created: {chunk_number - 1}")
-        print(f"Blob processing time: {blob_processing_time:.1f} seconds ({blob_processing_time/60:.1f} minutes)")
-        if blob_processing_time > 0:
-            print(f"Processing speed: {total_rows_written_for_blob/blob_processing_time:,.0f} rows/sec")
-    
-    # --- Final Summary ---
-    total_time = time.time() - script_start_time
-    print(f"\n\n=== Job Complete ===")
-    print(f"Total blobs processed: {len(matching_blobs)}")
-    print(f"Total rows processed across all blobs: {grand_total_rows_written:,}")
-    print(f"Total input size: {grand_total_input_size_mb:.2f} MB")
-    print(f"Total time: {total_time:.1f} seconds ({total_time/60:.1f} minutes)")
-    if total_time > 0 and grand_total_rows_written > 0:
-        print(f"Overall processing speed: {grand_total_rows_written/total_time:,.0f} rows/sec")
-        print(f"Overall data throughput: {grand_total_input_size_mb/total_time:.2f} MB/sec")
+                    if list_fields_to_expand:
+                        expand_count += 1
+                        base_row = {k: v for k, v in obj.items() if k not in list_fields_to_expand}
+                        # Assumption: expand only the first found list-of-dicts field
+                        field_to_expand = list(list_fields_to_expand)[0]
+                        expanded_rows = [{**base_row, **sub_dict} for sub_dict in obj[field_to_expand]]
+                    
+                    for row in expanded_rows:
+                        yield row
+                
+                print(f"JSON parsing complete: {item_count} items processed, {expand_count} expanded")
+
+            expanded_row_iterator = expanded_generator()
+
+            try:
+                first_row = next(expanded_row_iterator)
+                headers = list(first_row.keys())
+                print(f"CSV headers ({len(headers)} columns): {headers[:5]}..." if len(headers) > 5 else f"CSV headers: {headers}")
+            except StopIteration:
+                print("Warning: JSON stream was empty, no CSV file created.")
+                return
+
+            full_row_iterator = itertools.chain([first_row], expanded_row_iterator)
+
+            # --- UPLOAD LOGIC ---
+            if input_blob_size < CHUNK_THRESHOLD_BYTES:
+                # Original logic: process all at once for smaller files
+                print("Input blob is smaller than threshold. Processing as a single CSV.")
+                output_blob_name = os.path.basename(args.INPUT_BLOB_PATH_PREFIX).replace('.json', '.csv')
+                output_blob_path = os.path.join(os.path.dirname(args.INPUT_BLOB_PATH_PREFIX), output_blob_name)
+                
+                # Create an instance of our streaming CSV writer
+                csv_streamer = CsvStreamer(full_row_iterator, headers)
+
+                # Upload the CSV data directly from the CsvStreamer
+                output_blob_client = blob_service.get_blob_client(container=args.INPUT_CONTAINER_NAME, blob=output_blob_path)
+                
+                print(f"Uploading processed CSV to: {output_blob_path}")
+                upload_start = time.time()
+                output_blob_client.upload_blob(csv_streamer, overwrite=True, content_settings=ContentSettings(content_type='text/csv'), max_concurrency=8)
+                upload_end = time.time()
+                print("Upload complete.")
+                
+                end_time = time.time()
+                print(f"Upload time: {upload_end - upload_start:.2f} seconds")
+                print(f"Total processing time: {end_time - start_time:.2f} seconds")
+                print(f"Rows processed: {csv_streamer.get_row_count()}")
+                print(f"Processing rate: {csv_streamer.get_row_count() / (end_time - start_time):.1f} rows/second")
+            else:
+                # New streaming chunk logic for large files
+                print(f"Input blob is large. Using streaming chunked CSV output (chunk size: {CHUNK_THRESHOLD_BYTES / (1024*1024):.2f} MB).")
+                output_blob_basename = os.path.basename(args.INPUT_BLOB_PATH_PREFIX).replace('.json', '')
+                output_blob_dir = os.path.dirname(args.INPUT_BLOB_PATH_PREFIX)
+                
+                chunked_streamer = ChunkedCsvStreamer(full_row_iterator, headers, CHUNK_THRESHOLD_BYTES)
+                
+                while True:
+                    chunk_streamer, is_last = chunked_streamer.get_next_chunk_streamer()
+                    if chunk_streamer is None:
+                        break
+                        
+                    output_blob_name = f"{output_blob_basename}_part_{chunked_streamer.chunk_number:04d}.csv"
+                    output_blob_path = os.path.join(output_blob_dir, output_blob_name)
+                    output_blob_client = blob_service.get_blob_client(container=args.INPUT_CONTAINER_NAME, blob=output_blob_path)
+                    
+                    print(f"Streaming chunk {chunked_streamer.chunk_number} to {output_blob_path}")
+                    chunk_start = time.time()
+                    output_blob_client.upload_blob(chunk_streamer, overwrite=True, content_settings=ContentSettings(content_type='text/csv'), max_concurrency=8)
+                    chunk_end = time.time()
+                    print(f"Chunk {chunked_streamer.chunk_number} upload complete in {chunk_end - chunk_start:.2f} seconds ({chunk_streamer.get_row_count()} rows, {chunk_streamer.get_bytes_written() / (1024*1024):.2f} MB)")
+                    
+                    if is_last:
+                        break
+                
+                end_time = time.time()
+                print(f"Total processing time: {end_time - start_time:.2f} seconds")
+                print(f"Total rows processed: {chunked_streamer.get_total_rows()}")
+                if (end_time - start_time) > 0:
+                    print(f"Processing rate: {chunked_streamer.get_total_rows() / (end_time - start_time):.1f} rows/second")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
+

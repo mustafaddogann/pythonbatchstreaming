@@ -158,6 +158,42 @@ def extract_nested_rows_streaming(obj: Any, nested_path: str) -> Generator[Dict[
     yield from traverse(obj, path_parts, [], [])
 
 
+def get_ordered_headers_for_nested_path(row: Dict[str, Any], nested_path: str) -> List[str]:
+    """
+    Orders headers hierarchically for nested paths.
+    Groups fields by their level in the hierarchy and sorts within each group.
+    """
+    headers = list(row.keys())
+    
+    # Create groups based on underscore count (hierarchy level)
+    grouped = {}
+    for header in headers:
+        # Count underscores to determine hierarchy level
+        level = header.count('_')
+        if level not in grouped:
+            grouped[level] = []
+        grouped[level].append(header)
+    
+    # Build ordered list from least nested to most nested
+    ordered = []
+    for level in sorted(grouped.keys()):
+        level_headers = grouped[level]
+        
+        # Within each level, sort alphabetically but with some special rules
+        # Put ID fields first, then CODE fields, then others
+        id_fields = sorted([h for h in level_headers if h.endswith('_ID')])
+        code_fields = sorted([h for h in level_headers if h.endswith('_CODE') and h not in id_fields])
+        timestamp_fields = sorted([h for h in level_headers if 'TIMESTAMP' in h and h not in id_fields + code_fields])
+        other_fields = sorted([h for h in level_headers if h not in id_fields + code_fields + timestamp_fields])
+        
+        ordered.extend(id_fields)
+        ordered.extend(code_fields)
+        ordered.extend(other_fields)
+        ordered.extend(timestamp_fields)
+    
+    return ordered
+
+
 def sanitize_filename(filename: str) -> str:
     """Removes illegal characters from a filename."""
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
@@ -394,7 +430,11 @@ def main():
     # Get the first row to determine headers
     try:
         first_row = next(expanded_row_iterator)
-        headers = list(first_row.keys())
+        # For nested paths, order columns hierarchically
+        if args.NESTED_PATH and '.' in args.NESTED_PATH:
+            headers = get_ordered_headers_for_nested_path(first_row, args.NESTED_PATH)
+        else:
+            headers = list(first_row.keys())
     except StopIteration:
         print("Warning: JSON stream was empty, no CSV file created.")
         return

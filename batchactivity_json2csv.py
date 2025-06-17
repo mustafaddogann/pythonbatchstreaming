@@ -27,6 +27,9 @@ except ImportError:
     import ijson.backends.python as ijson_backend
     print("Warning: C backend for ijson not found. Falling back to slower Python backend.")
 
+# Import ijson itself for get_objects function
+import ijson as ijson_main
+
 def parse_args():
     """Parses command-line arguments."""
     parser = argparse.ArgumentParser(description="Convert large JSON files from Azure Blob Storage to CSV.")
@@ -290,19 +293,57 @@ def main():
             def get_root_iterator(stream):
                 try:
                     # get_objects reads one top-level JSON value at a time.
-                    objects = ijson.get_objects(stream)
-                    # Get the first (and likely only) top-level value.
-                    first_obj = next(objects)
+                    objects = ijson_main.parse(stream)
+                    # We need to build the first object from parse events
+                    builder = None
+                    for prefix, event, value in objects:
+                        if event == 'start_map' and prefix == '':
+                            # Starting a root object
+                            builder = {}
+                            stack = [builder]
+                            current_key = None
+                        elif event == 'start_array' and prefix == '':
+                            # Starting a root array
+                            builder = []
+                            stack = [builder]
+                        elif event == 'map_key':
+                            current_key = value
+                        elif event in ('string', 'number', 'boolean', 'null'):
+                            if isinstance(stack[-1], dict):
+                                stack[-1][current_key] = value
+                            elif isinstance(stack[-1], list):
+                                stack[-1].append(value)
+                        elif event == 'start_map':
+                            new_dict = {}
+                            if isinstance(stack[-1], dict):
+                                stack[-1][current_key] = new_dict
+                            elif isinstance(stack[-1], list):
+                                stack[-1].append(new_dict)
+                            stack.append(new_dict)
+                        elif event == 'start_array':
+                            new_array = []
+                            if isinstance(stack[-1], dict):
+                                stack[-1][current_key] = new_array
+                            elif isinstance(stack[-1], list):
+                                stack[-1].append(new_array)
+                            stack.append(new_array)
+                        elif event in ('end_map', 'end_array'):
+                            stack.pop()
+                            if len(stack) == 0:
+                                # We've completed the root object/array
+                                break
                     
-                    if isinstance(first_obj, list):
+                    if builder is None:
+                        raise StopIteration
+                    
+                    if isinstance(builder, list):
                         # The root was an array, so we can iterate its elements.
                         print("Detected a top-level array. Iterating through its elements.")
-                        return iter(first_obj)
+                        return iter(builder)
                     else:
-                        # The root was a single object. The iterator should yield
-                        # this object and any subsequent objects (for line-delimited JSON).
+                        # The root was a single object.
                         print("Detected a single top-level object.")
-                        return itertools.chain([first_obj], objects)
+                        return iter([builder])
                 except StopIteration:
                     # The file was empty or contained only whitespace.
                     print("Warning: JSON stream appears to be empty.")

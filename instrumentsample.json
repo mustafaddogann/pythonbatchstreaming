@@ -1,0 +1,55 @@
+{
+  "instrument": [
+    {
+      "id": 43,
+      "prototype": {
+        "domains": [
+          {
+            "id": "ZxRMvy",
+            "code": "UamBIW",
+            "items": [
+              {
+                "code": "RWmRZD",
+                "rating": 22,
+                "required": true,
+                "rating_type": "XxhDeW",
+                "above_six_id": "YpyYzy",
+                "confidential": true,
+                "under_six_id": "lyxkDB",
+                "has_na_option": false,
+                "confidential_by_default": false
+              }
+            ],
+            "above_six": false,
+            "under_six": true,
+            "is_caregiver_domain": true
+          }
+        ],
+        "under_six": null,
+        "caregiver_domain_template": {
+          "id": "XaujNV",
+          "code": "aZvcIf",
+          "items": [
+            {
+              "code": "wGDHAP",
+              "rating": 93,
+              "required": false,
+              "rating_type": "pYdfPO",
+              "above_six_id": "aUQcYK",
+              "confidential": false,
+              "under_six_id": "raKmep",
+              "has_na_option": true,
+              "confidential_by_default": false
+            }
+          ],
+          "above_six": true,
+          "under_six": false,
+          "is_caregiver_domain": true
+        }
+      },
+      "county_id": 51,
+      "create_timestamp": "wpAcGt",
+      "update_timestamp": null
+    }
+  ]
+}

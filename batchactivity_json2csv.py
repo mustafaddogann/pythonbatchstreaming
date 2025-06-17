@@ -36,16 +36,21 @@ def parse_args():
     parser.add_argument("OUTPUT_CONTAINER_NAME", help="Name of the output container.")
     parser.add_argument("OUTPUT_BLOB_PATH_PREFIX", help="Path prefix for the output CSV file.")
     parser.add_argument("NESTED_PATH", nargs='?', default="", help="Optional dot-separated path to a nested array to extract, e.g., 'data.records'.")
+    parser.add_argument("--exclude-keys", type=str, default="", help="Comma-separated list of keys to exclude from the output, e.g., 'items,details'.")
     return parser.parse_args()
 
 # ---------- UTILS ----------
 
-def flatten_json(y: Any, parent_key: str = '', sep: str = '_') -> Dict[str, Any]:
+def flatten_json(y: Any, parent_key: str = '', sep: str = '_', keys_to_exclude: List[str] = None) -> Dict[str, Any]:
     """Flattens a nested dictionary."""
+    if keys_to_exclude is None:
+        keys_to_exclude = []
     out = {}
     def flatten(x: Any, name: str = ''):
         if isinstance(x, dict):
             for a in x:
+                if a in keys_to_exclude:
+                    continue
                 flatten(x[a], f"{name}{a}{sep}")
         elif isinstance(x, list):
             # Convert lists to JSON strings to prevent memory issues
@@ -272,13 +277,17 @@ def main():
         
         # Create a processing pipeline using generators
         # Flatten and expand only top-level list-of-dict fields (no cross-joins)
+        exclude_keys_list = [key.strip() for key in args.exclude_keys.split(',') if key.strip()]
+        if exclude_keys_list:
+            print(f"Excluding keys: {exclude_keys_list}")
+
         def expanded_generator():
             row_count = 0
             parse_start = time.time()
             last_time = parse_start
             
             for obj in json_iterator:
-                for row in expand_rows_generator(flatten_json(obj)):
+                for row in expand_rows_generator(flatten_json(obj, keys_to_exclude=exclude_keys_list)):
                     row_count += 1
                     if row_count % PROGRESS_INTERVAL == 0:
                         current_time = time.time()

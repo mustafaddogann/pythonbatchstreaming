@@ -149,6 +149,13 @@ def extract_nested_rows_streaming(obj: Any, nested_path: str) -> Generator[Dict[
             # Need to traverse each item in the list
             for item in data:
                 yield from traverse(item, path_parts, parents, current_path)
+    
+    # Start the traversal
+    if not nested_path:
+        return
+    
+    path_parts = nested_path.split('.')
+    yield from traverse(obj, path_parts, [], [])
 
 
 def sanitize_filename(filename: str) -> str:

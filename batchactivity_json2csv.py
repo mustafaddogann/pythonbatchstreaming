@@ -177,19 +177,9 @@ def get_ordered_headers_for_nested_path(row: Dict[str, Any], nested_path: str) -
     # Build ordered list from least nested to most nested
     ordered = []
     for level in sorted(grouped.keys()):
-        level_headers = grouped[level]
-        
-        # Within each level, sort alphabetically but with some special rules
-        # Put ID fields first, then CODE fields, then others
-        id_fields = sorted([h for h in level_headers if h.endswith('_ID')])
-        code_fields = sorted([h for h in level_headers if h.endswith('_CODE') and h not in id_fields])
-        timestamp_fields = sorted([h for h in level_headers if 'TIMESTAMP' in h and h not in id_fields + code_fields])
-        other_fields = sorted([h for h in level_headers if h not in id_fields + code_fields + timestamp_fields])
-        
-        ordered.extend(id_fields)
-        ordered.extend(code_fields)
-        ordered.extend(other_fields)
-        ordered.extend(timestamp_fields)
+        # Within each level, sort alphabetically
+        level_headers = sorted(grouped[level])
+        ordered.extend(level_headers)
     
     return ordered
 

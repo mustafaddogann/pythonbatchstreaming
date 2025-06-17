@@ -261,7 +261,7 @@ def main():
     json_iterator = ijson_backend.items(buffered_stream, ijson_path)
     
     # Create a processing pipeline using generators
-     # Flatten and expand only top-level list-of-dict fields (no cross-joins)
+    # Flatten and expand only top-level list-of-dict fields (no cross-joins)
     def expanded_generator():
         row_count = 0
         parse_start = time.time()

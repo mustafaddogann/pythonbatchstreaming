@@ -42,7 +42,7 @@ def parse_args():
 # ---------- UTILS ----------
 
 def flatten_json(y: Any, parent_key: str = '', sep: str = '_', keys_to_exclude: List[str] = None) -> Dict[str, Any]:
-    """Flattens a nested dictionary."""
+    """Flattens a nested dictionary. It avoids flattening lists, leaving them for the expander."""
     if keys_to_exclude is None:
         keys_to_exclude = []
     out = {}
@@ -53,19 +53,26 @@ def flatten_json(y: Any, parent_key: str = '', sep: str = '_', keys_to_exclude: 
                     continue
                 flatten(x[a], f"{name}{a}{sep}")
         elif isinstance(x, list):
-            # Convert lists to JSON strings to prevent memory issues
-            out[name[:-1]] = json.dumps(x)
+            # Keep the list intact for the expand_rows_generator to handle.
+            # Only convert to JSON string if it's not a list of dictionaries,
+            # which is the target for expansion.
+            if not all(isinstance(i, dict) for i in x):
+                out[name[:-1]] = json.dumps(x)
+            else:
+                out[name[:-1]] = x 
         else:
             out[name[:-1]] = x
     flatten(y, parent_key)
     return out
 
-def expand_rows_generator(row: Dict[str, Any]) -> Generator[Dict[str, Any], None, None]:
+def expand_rows_generator(row: Dict[str, Any], keys_to_exclude: List[str] = None) -> Generator[Dict[str, Any], None, None]:
     """
-    Expands only the first list-of-dicts field in a row into multiple rows.
-    Optimized to reduce memory usage.
+    Expands the first list-of-dicts field in a row into multiple rows.
+    Any nested objects within the expanded list items are flattened.
     """
-    # First pass: find expandable list
+    if keys_to_exclude is None:
+        keys_to_exclude = []
+        
     expandable_list_key = None
     expandable_list = None
     
@@ -76,18 +83,16 @@ def expand_rows_generator(row: Dict[str, Any]) -> Generator[Dict[str, Any], None
             break
     
     if expandable_list_key is None:
-        # No expansion needed - convert any remaining lists to JSON strings
         yield {k: json.dumps(v) if isinstance(v, list) else v for k, v in row.items()}
     else:
-        # Build base row without the expandable list
         base_row = {k: json.dumps(v) if isinstance(v, list) else v 
                    for k, v in row.items() if k != expandable_list_key}
         
-        # Expand the list
         for item in expandable_list:
             new_row = base_row.copy()
-            flat = flatten_json(item, parent_key=f"{expandable_list_key}_")
-            new_row.update(flat)
+            # Flatten the item from the list, applying exclusions here.
+            flat_item = flatten_json(item, parent_key=f"{expandable_list_key}_", keys_to_exclude=keys_to_exclude)
+            new_row.update(flat_item)
             yield new_row
 
 
@@ -317,7 +322,7 @@ def main():
             last_time = parse_start
             
             for obj in json_iterator:
-                for row in expand_rows_generator(flatten_json(obj, keys_to_exclude=exclude_keys_list)):
+                for row in expand_rows_generator(flatten_json(obj), keys_to_exclude=exclude_keys_list):
                     row_count += 1
                     if row_count % PROGRESS_INTERVAL == 0:
                         current_time = time.time()

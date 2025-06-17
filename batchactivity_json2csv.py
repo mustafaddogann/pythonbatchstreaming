@@ -267,13 +267,43 @@ def main():
         raw_wrapper = AzureBlobStreamWrapper(download_stream)
         buffered_stream = BufferedReader(raw_wrapper, buffer_size=BUFFER_SIZE)
 
-        # Determine the ijson path based on NESTED_PATH
-        ijson_path = f'{args.NESTED_PATH}.item' if args.NESTED_PATH else 'item'
-        
-        # Use ijson_backend.items directly with the download_stream
-        # This is highly memory-efficient as ijson pulls data as needed.
-        print(f"Streaming JSON items from path: {ijson_path}")
-        json_iterator = ijson_backend.items(buffered_stream, ijson_path)
+        # Determine the ijson path based on NESTED_PATH and create the iterator
+        if args.NESTED_PATH:
+            ijson_path = f'{args.NESTED_PATH}.item'
+            print(f"Streaming JSON items from path: {ijson_path}")
+            json_iterator = ijson_backend.items(buffered_stream, ijson_path)
+        else:
+            # This logic robustly handles a file that contains:
+            # 1. A single root object: `{...}`
+            # 2. An array of objects: `[{...}, {...}]`
+            # It does this by reading the first top-level object from the stream.
+            # If that object is a list, it iterates over it. Otherwise, it treats
+            # the single object as the only item in the stream.
+            print("No NESTED_PATH provided. Reading top-level objects from the JSON stream.")
+            ijson_path = "(top-level)"
+            
+            def get_root_iterator(stream):
+                try:
+                    # get_objects reads one top-level JSON value at a time.
+                    objects = ijson.get_objects(stream)
+                    # Get the first (and likely only) top-level value.
+                    first_obj = next(objects)
+                    
+                    if isinstance(first_obj, list):
+                        # The root was an array, so we can iterate its elements.
+                        print("Detected a top-level array. Iterating through its elements.")
+                        return iter(first_obj)
+                    else:
+                        # The root was a single object. The iterator should yield
+                        # this object and any subsequent objects (for line-delimited JSON).
+                        print("Detected a single top-level object.")
+                        return itertools.chain([first_obj], objects)
+                except StopIteration:
+                    # The file was empty or contained only whitespace.
+                    print("Warning: JSON stream appears to be empty.")
+                    return iter([]) # Return an empty iterator
+            
+            json_iterator = get_root_iterator(buffered_stream)
         
         # Create a processing pipeline using generators
         # Flatten and expand only top-level list-of-dict fields (no cross-joins)

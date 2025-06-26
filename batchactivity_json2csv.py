@@ -435,7 +435,7 @@ def main():
     # --- Main Chunking Loop ---
     chunk_number = 1
     total_rows_written = 0
-    base_name = os.path.splitext(os.path.basename(args.INPUT_BLOB_PATH_PREFIX))[0]
+    base_name = os.path.splitext(os.path.basename(blob_name))[0]
     nested_part = sanitize_filename(args.NESTED_PATH) if args.NESTED_PATH else ""
     CHUNK_TARGET_SIZE_BYTES = CHUNK_TARGET_SIZE_MB * 1024 * 1024
 
